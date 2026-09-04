@@ -273,6 +273,24 @@ export async function toggleCheckinAction(fd: FormData): Promise<void> {
   redirect("/s");
 }
 
+// 供学生端“打卡/撤销”乐观更新调用：不整页跳转，返回结果由前端即时反馈
+export async function setCheckinStateAction(fd: FormData): Promise<{ ok: boolean; done: boolean; error?: string }> {
+  const me = await requireStudent();
+  const planId = str(fd, "planId");
+  const date = str(fd, "date");
+  const done = fd.get("done") === "1";
+  const dayIndex = Number(str(fd, "dayIndex"));
+  const plan = await findPlanForStudent(planId, me.id);
+  if (!plan) return { ok: false, done, error: "计划不存在" };
+  if (!date) return { ok: false, done, error: "日期无效" };
+  const existing = await findCheckinByPlanDate(planId, date);
+  if (done && !existing) {
+    await addCheckin(me.id, planId, date, Number.isFinite(dayIndex) ? dayIndex : 0);
+  } else if (!done && existing) {
+    await deleteCheckin(planId, date);
+  }
+  return { ok: true, done };
+}
 // ---------- 学生端：我的训练日 ----------
 export async function setMyWeekdaysAction(fd: FormData): Promise<void> {
   const me = await requireStudent();
@@ -421,3 +439,5 @@ export async function changePasswordAction(fd: FormData): Promise<void> {
   await updateUser(user.id, { passwordHash: hash });
   redirect("/settings?ok=password");
 }
+
+

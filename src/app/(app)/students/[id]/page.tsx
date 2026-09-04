@@ -5,6 +5,7 @@ import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { findStudent, listGoals, listScores, latestScoresByItem, listPlans } from "@/lib/repo";
 import { ConfirmForm } from "@/components/forms";
+import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner } from "@/components/error-banner";
 import { clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
@@ -19,12 +20,15 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const student = await findStudent(id, user.id);
   if (!student) notFound();
 
-  const goals = await listGoals(id);
+  // 并行查询目标/成绩/计划，减少跨区网络下点开学生档案的等待
+  const [goals, scores, latest, plans] = await Promise.all([
+    listGoals(id),
+    listScores(id),
+    latestScoresByItem(id),
+    listPlans(id),
+  ]);
   const goalMap: Record<string, number | null> = {};
   for (const g of goals) goalMap[g.event] = g.target;
-  const scores = await listScores(id);
-  const latest = await latestScoresByItem(id);
-  const plans = await listPlans(id);
   const age = calcAge(student.birthDate);
   const weeks = weeksUntil(student.examDate);
   const hasLlm = !!process.env.OPENAI_API_KEY;
@@ -239,7 +243,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
                 AI 润色（调用大模型优化执行要点）
               </label>
             )}
-            <button type="submit" className="btn btn-primary">生成训练计划</button>
+            <PendingSubmitButton className="btn btn-primary" pendingText="正在生成计划，约需 10-60 秒…">生成训练计划</PendingSubmitButton>
           </div>
         </form>
         <div className="mt-3 text-xs text-slate-400">
@@ -377,3 +381,5 @@ function OkNote({ text }: { text: string }) {
     <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{text}</div>
   );
 }
+
+

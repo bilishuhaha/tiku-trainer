@@ -4,6 +4,7 @@ import { ArrowLeft, CheckCircle2, Trash2, Lightbulb, ShieldAlert, RotateCcw, Cli
 import { requireUser } from "@/lib/auth";
 import { findPlan, findStudent, updatePlan } from "@/lib/repo";
 import { ConfirmForm, PrintButton } from "@/components/forms";
+import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner, OkBanner } from "@/components/error-banner";
 import { confirmPlanAction, deletePlanAction, regeneratePlanAction, updatePlanNoteAction } from "@/lib/actions";
 import { fmtDate } from "@/lib/format";
@@ -44,7 +45,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
           {plan.status === "draft" ? (
             <form action={confirmPlanAction}>
             <input type="hidden" name="id" value={id} />
-            <button type="submit" className="btn btn-dark">确认计划（定稿）</button>
+            <PendingSubmitButton className="btn btn-dark" pendingText="确认中…">确认计划（定稿）</PendingSubmitButton>
           </form>
           ) : (
             <span className="inline-flex items-center gap-1.5 rounded-lg bg-emerald-100 px-3 py-2 text-sm font-medium text-emerald-700">
@@ -112,9 +113,9 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
               <Sparkles className="h-3.5 w-3.5" /> AI 润色
             </label>
           )}
-          <button type="submit" className="btn btn-dark">
+          <PendingSubmitButton className="btn btn-dark" pendingText="重新生成中，约需 10-60 秒…">
             <RefreshCw className="h-4 w-4" /> 按最新状态重新生成
-          </button>
+          </PendingSubmitButton>
         </form>
       </div>
 
@@ -338,3 +339,5 @@ function blockKindColor(kind: string): string {
   };
   return m[kind] ?? "bg-slate-100 text-slate-600";
 }
+
+

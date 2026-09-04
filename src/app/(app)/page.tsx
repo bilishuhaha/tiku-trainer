@@ -11,7 +11,11 @@ export const metadata = { title: "仪表盘" };
 
 export default async function DashboardPage() {
   const user = await requireUser();
-  const students = await listStudents(user.id);
+  // 并行查询学生与计划统计，减少跨区网络下的主页等待
+  const [students, planCountMap] = await Promise.all([
+    listStudents(user.id),
+    countPlansByCoach(user.id),
+  ]);
 
   const now = new Date();
   const withExam = students.filter((s) => s.examDate);
@@ -19,7 +23,6 @@ export default async function DashboardPage() {
     const w = weeksUntil(s.examDate);
     return w !== null && w >= 0 && w <= 8;
   });
-  const planCountMap = await countPlansByCoach(user.id);
   const totalPlans = Object.values(planCountMap).reduce((a, c) => a + c, 0);
 
   return (
@@ -144,5 +147,6 @@ function EmptyState() {
     </div>
   );
 }
+
 
 

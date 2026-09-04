@@ -3,8 +3,9 @@ import { notFound, redirect } from "next/navigation";
 import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown } from "lucide-react";
 import { requireStudent } from "@/lib/auth";
 import { findActivePlan, findStudentById, listCheckins, listGoals } from "@/lib/repo";
-import { toggleCheckinAction, setMyWeekdaysAction } from "@/lib/actions";
+import { setMyWeekdaysAction } from "@/lib/actions";
 import { ErrorBanner } from "@/components/error-banner";
+import CheckinControl from "@/components/student-checkin";
 import { EVENTS, EVENT_ORDER, itemUnit } from "@/lib/domain/items";
 import type { PlanDoc, DayDoc, BlockDoc } from "@/lib/domain/types";
 import { localDateKey, weeksUntil } from "@/lib/format";
@@ -17,11 +18,13 @@ export const metadata = { title: "我的训练" };
 export default async function StudentHomePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
   const { error } = await searchParams;
   const me = await requireStudent();
-  const student = await findStudentById(me.id);
+  // 并行查询：减少跨区网络下“点开页面”的等待
+  const [student, plan, goals] = await Promise.all([
+    findStudentById(me.id),
+    findActivePlan(me.id),
+    listGoals(me.id),
+  ]);
   if (!student) redirect("/s/login");
-
-  const plan = await findActivePlan(student.id);
-  const goals = await listGoals(student.id);
 
   const today = new Date();
   const todayWd = weekdayOf(today);
@@ -249,28 +252,7 @@ function TodayCard({ todayEntry, done, planId, todayDate, week, todayWd, planSta
         ))}
       </div>
       <div className="border-t border-slate-100 p-4">
-        {done ? (
-          <div className="flex items-center justify-between rounded-xl bg-emerald-50 px-4 py-3">
-            <span className="flex items-center gap-2 text-sm font-medium text-emerald-700">
-              <CheckCircle2 className="h-5 w-5" /> 今天已完成，很棒！
-            </span>
-            <form action={toggleCheckinAction}>
-              <input type="hidden" name="planId" value={planId} />
-              <input type="hidden" name="date" value={todayDate} />
-              <input type="hidden" name="dayIndex" value={String(todayEntry.dayIndex ?? 0)} />
-              <button type="submit" className="text-xs text-slate-400 hover:text-rose-500">撤销</button>
-            </form>
-          </div>
-        ) : (
-          <form action={toggleCheckinAction}>
-            <input type="hidden" name="planId" value={planId} />
-            <input type="hidden" name="date" value={todayDate} />
-            <input type="hidden" name="dayIndex" value={String(todayEntry.dayIndex ?? 0)} />
-            <button type="submit" className="btn w-full bg-emerald-600 py-3 text-base text-white hover:bg-emerald-700">
-              练完了，打卡 ✓
-            </button>
-          </form>
-        )}
+        <CheckinControl planId={planId} date={todayDate} dayIndex={todayEntry.dayIndex ?? 0} initialDone={done} />
       </div>
     </div>
   );
@@ -322,3 +304,4 @@ function RestTip({ icon, title, sub }: { icon: React.ReactNode; title: string; s
     </div>
   );
 }
+
