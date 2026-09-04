@@ -1,0 +1,11 @@
+name: Keep Render Awake
+on:
+  schedule:
+    - cron: "*/5 * * * *"
+  workflow_dispatch: {}
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping tiku-trainer
+        run: curl -sS -o /dev/null -w "%{http_code}\n" https://tiku-trainer.onrender.com/login || true
