@@ -6,3 +6,10 @@ data/*.db-journal
 *.tsbuildinfo
 *.log
 .DS_Store
+
+auth
+auth-wal
+data/*.db-wal
+data/*.db-shm
+
+cloud-credentials.local.txt
