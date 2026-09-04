@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Dumbbell, Target, CalendarRange, Smartphone, FileText, ShieldCheck, Info, ArrowRight, Mail, LockKeyhole, Sparkles, Gauge } from "lucide-react";
 import { loginAction } from "@/lib/actions";
 import { ErrorBanner } from "@/components/error-banner";
+import AddToHome from "@/components/add-to-home";
 
 export const metadata: Metadata = { title: "登录" };
 
@@ -148,6 +149,9 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </Link>
           </div>
           <p className="mt-3 text-center text-[11px] text-slate-400">教练请用注册邮箱登录 · 学生请用教练提供的访问码登录</p>
+          <div className="mt-4 flex justify-center">
+            <AddToHome />
+          </div>
 
           {/* 注意事项 */}
           <div className="mt-7 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-4">
@@ -177,3 +181,4 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     </main>
   );
 }
+

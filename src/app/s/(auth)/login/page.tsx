@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Dumbbell } from "lucide-react";
 import { studentLoginAction } from "@/lib/actions";
 import { ErrorBanner } from "@/components/error-banner";
+import AddToHome from "@/components/add-to-home";
 
 export const metadata: Metadata = { title: "学生登录" };
 
@@ -40,6 +41,9 @@ export default async function StudentLoginPage({ searchParams }: { searchParams:
             还没有访问码？请找教练开通（教练在“学生档案 → 学生个人版”生成）。
           </div>
         </div>
+        <div className="mt-5 flex justify-center">
+          <AddToHome />
+        </div>
         <p className="mt-4 text-center text-xs text-slate-400">
           <Link href="/login" className="text-slate-500 hover:text-slate-700">教练入口 →</Link>
         </p>
@@ -47,3 +51,4 @@ export default async function StudentLoginPage({ searchParams }: { searchParams:
     </main>
   );
 }
+
