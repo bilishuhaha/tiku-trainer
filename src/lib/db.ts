@@ -149,9 +149,15 @@ async function createDb(): Promise<Db> {
     const client = postgres(url, { max: 5, connect_timeout: 15 });
     return new PostgresDb(client);
   }
-  const filePath = url.slice(5);
-  fs.mkdirSync(path.dirname(filePath), { recursive: true });
-  const c = createLibsql({ url });
+  if (url.startsWith("file:")) {
+    const filePath = url.slice(5);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const c = createLibsql({ url });
+    return new SqliteDb(c);
+  }
+  // 远程 libsql（如 Turso）：libsql:// 或 https://
+  const token = process.env.LIBSQL_AUTH_TOKEN || "";
+  const c = createLibsql({ url, authToken: token || undefined });
   return new SqliteDb(c);
 }
 
