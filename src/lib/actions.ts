@@ -3,7 +3,7 @@
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { createSession, createStudentSession, destroySession, destroyStudentSession, requireStudent, requireUser, verifyCredentials } from "./auth";
-import { EVENTS, ITEMS } from "./domain/items";
+import { EVENTS, EVENT_ORDER, ITEMS, isLowerBetter } from "./domain/items";
 import { buildPlanDoc } from "./domain/plan";
 import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
@@ -11,7 +11,8 @@ import { localDateKey } from "./format";
 import {
   addCheckin, addScore, createPlan, createStudent, deleteCheckin, deletePlan, deleteScore, deleteStudent,
   findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode,
-  listGoals, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays, updatePlan, updateStudent,
+  listGoals, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
+  updatePlan, updatePlanContent, updateStudent,
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";
@@ -283,4 +284,92 @@ export async function setMyWeekdaysAction(fd: FormData): Promise<void> {
   if (uniq.length !== k) return redirect("/s?error=" + encodeURIComponent(`请正好选择 ${k} 天作为训练日`));
   await setStudentWeekdays(me.id, uniq.join(","));
   redirect("/s");
+}
+
+// ---------- 按最新状态更新计划 ----------
+function recentTrendLines(rows: { item: string; value: number; date: string }[]): string[] {
+  const lines: string[] = [];
+  const byItem: Record<string, { date: string; value: number }[]> = {};
+  for (const r of rows) {
+    (byItem[r.item] ??= []).push({ date: r.date, value: r.value });
+  }
+  for (const ev of EVENT_ORDER) {
+    const item = EVENTS[ev].primaryItem;
+    const arr = (byItem[item] ?? []).slice().sort((x, y) => x.date.localeCompare(y.date));
+    if (arr.length < 2) continue;
+    const prev = arr[arr.length - 2].value;
+    const last = arr[arr.length - 1].value;
+    if (prev === last) continue;
+    const better = isLowerBetter(item) ? last < prev : last > prev;
+    const unit = ITEMS[item]?.unit ?? "";
+    const delta = Math.abs(last - prev);
+    lines.push(
+      better
+        ? `✅ 近两次复测：${EVENTS[ev].shortLabel} ${prev.toFixed(2)} → ${last.toFixed(2)} ${unit}（进步 ${delta.toFixed(2)}，训练有效）`
+        : `⚠️ 近两次复测：${EVENTS[ev].shortLabel} ${prev.toFixed(2)} → ${last.toFixed(2)} ${unit}（退步 ${delta.toFixed(2)}，建议检查恢复与技术）`
+    );
+  }
+  return lines;
+}
+
+export async function regeneratePlanAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const planId = str(fd, "planId");
+  const plan = await findPlan(planId, user.id);
+  if (!plan) return errTo("/students", "计划不存在");
+  const student = await findStudent(plan.studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+
+  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number } };
+  const daysRaw = prev.meta?.daysPerWeek ?? 6;
+  const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
+
+  const goals = await listGoals(student.id);
+  const latest = await latestScoresByItem(student.id);
+  const goalMap: Record<EventKey, number | null> = { sprint: null, tripleJump: null, shotPut: null };
+  for (const g of goals) {
+    if (g.event in goalMap) (goalMap as Record<string, number | null>)[g.event] = g.target;
+  }
+  const req: PlanRequest = {
+    student: {
+      id: student.id,
+      name: student.name,
+      gender: student.gender === "female" ? "female" : "male",
+      weightKg: student.weight,
+      trainingYears: student.trainingYears,
+      examDate: student.examDate,
+      injuryNote: student.injuryNote,
+    },
+    latest,
+    goals: goalMap,
+    daysPerWeek,
+  };
+
+  const doc = buildPlanDoc(req, { daysPerWeek });
+  const trends = recentTrendLines(await listScores(student.id));
+  for (const t of trends) doc.meta.coachAdvice.push(t);
+  const note = str(fd, "statusNote").trim();
+  if (note) doc.meta.coachAdvice.unshift(`教练本次更新说明：${note}`);
+
+  const wantLlm = str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY;
+  if (wantLlm) {
+    const enhanced = await enhanceWithLlm(doc);
+    if (enhanced) {
+      doc.meta.mode = enhanced.mode;
+      doc.meta.coachAdvice = enhanced.coachAdvice;
+      doc.meta.basis = enhanced.basis;
+    }
+  }
+
+  await updatePlanContent(planId, user.id, {
+    title: doc.meta.title,
+    status: "draft",
+    goalSummary: doc.meta.coachAdvice.join("\n"),
+    diagnosis: JSON.stringify(doc.diagnosis),
+    structure: JSON.stringify(doc),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true }),
+    startDate: localDateKey(),
+    examDate: student.examDate,
+  });
+  redirect(`/plans/${planId}?ok=updated`);
 }

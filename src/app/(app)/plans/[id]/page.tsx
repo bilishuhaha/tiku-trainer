@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, CheckCircle2, Printer, Trash2, Lightbulb, ShieldAlert, RotateCcw, ClipboardCheck, FlaskConical, MessageSquarePlus } from "lucide-react";
+import { ArrowLeft, CheckCircle2, Trash2, Lightbulb, ShieldAlert, RotateCcw, ClipboardCheck, FlaskConical, MessageSquarePlus, RefreshCw, Sparkles } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { findPlan, findStudent, updatePlan } from "@/lib/repo";
 import { ConfirmForm, PrintButton } from "@/components/forms";
-import { ErrorBanner } from "@/components/error-banner";
-import { confirmPlanAction, deletePlanAction, updatePlanNoteAction } from "@/lib/actions";
+import { ErrorBanner, OkBanner } from "@/components/error-banner";
+import { confirmPlanAction, deletePlanAction, regeneratePlanAction, updatePlanNoteAction } from "@/lib/actions";
 import { fmtDate } from "@/lib/format";
 import type { PlanDoc, PeriodDoc, DayDoc, BlockDoc, ExerciseDoc, Finding } from "@/lib/domain/types";
 
@@ -18,9 +18,9 @@ const PHASE_COLORS: Record<string, string> = {
   taper: "bg-amber-100 text-amber-700",
 };
 
-export default async function PlanPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string }> }) {
+export default async function PlanPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<{ error?: string; ok?: string }> }) {
   const { id } = await params;
-  const { error } = await searchParams;
+  const { error, ok } = await searchParams;
   const user = await requireUser();
   const plan = await findPlan(id, user.id);
   if (!plan) notFound();
@@ -28,10 +28,12 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
   const doc: PlanDoc = JSON.parse(plan.structure);
   const diagnosis: { summaryLines: string[]; findings: Finding[] } = plan.diagnosis ? JSON.parse(plan.diagnosis) : doc.diagnosis;
   const aiMeta = plan.aiMeta ? JSON.parse(plan.aiMeta) : null;
+  const hasLlm = !!process.env.OPENAI_API_KEY;
 
   return (
     <div className="space-y-5">
       <ErrorBanner error={error} />
+      <OkBanner ok={ok === "updated" ? "已按学生最新状态更新计划（已回到草稿），请核对后重新确认。" : null} />
       {/* 工具条 */}
       <div className="no-print flex flex-wrap items-center justify-between gap-3">
         <Link href={student ? `/students/${student.id}` : "/students"} className="inline-flex items-center gap-1 text-sm text-slate-500 hover:text-slate-700">
@@ -84,6 +86,36 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
             <button type="submit" className="btn btn-outline mt-2">保存备注</button>
           </form>
         </div>
+      </div>
+
+      {/* 更新计划（按学生最新状态） */}
+      <div className="card border-emerald-200 p-5">
+        <div className="flex items-center gap-2">
+          <RefreshCw className="h-5 w-5 text-emerald-600" />
+          <h2 className="font-semibold text-slate-900">更新计划内容（计划不是一成不变的）</h2>
+        </div>
+        <p className="mt-1.5 text-sm text-slate-500">
+          学生会变化：新成绩、伤病、疲劳、考试日期调整……点下方按钮会<strong className="text-slate-700">重新诊断并按最新数据重排周期课表</strong>，覆盖当前内容并回到草稿。
+        </p>
+        <form action={regeneratePlanAction} className="mt-4 flex flex-wrap items-center gap-3">
+          <input type="hidden" name="planId" value={id} />
+          <div className="min-w-56 flex-1">
+            <input
+              name="statusNote"
+              className="input"
+              placeholder="最近状态（可选）：如 上周踝部不适已恢复 / 最近只练了 4 天 / 100米刚测到 12.3"
+            />
+          </div>
+          {hasLlm && (
+            <label className="flex cursor-pointer items-center gap-1.5 pb-1 text-xs text-slate-500">
+              <input type="checkbox" name="useLlm" value="1" className="accent-emerald-600" />
+              <Sparkles className="h-3.5 w-3.5" /> AI 润色
+            </label>
+          )}
+          <button type="submit" className="btn btn-dark">
+            <RefreshCw className="h-4 w-4" /> 按最新状态重新生成
+          </button>
+        </form>
       </div>
 
       {/* 执行要点 */}
