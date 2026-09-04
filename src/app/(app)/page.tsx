@@ -4,6 +4,7 @@ import { requireUser } from "@/lib/auth";
 import { listStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 import { ConfirmForm } from "@/components/forms";
+import ScoreCalculator from "@/components/score-calculator";
 import { deleteStudentAction } from "@/lib/actions";
 
 export const metadata = { title: "仪表盘" };
@@ -32,6 +33,9 @@ export default async function DashboardPage() {
           <Plus className="h-4 w-4" /> 添加学生
         </Link>
       </div>
+
+      {/* 广东术科成绩算分器 */}
+      <ScoreCalculator />
 
       {/* 新生身体评估表入口（第一节课用） */}
       <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50/70 px-4 py-3">
@@ -140,3 +144,5 @@ function EmptyState() {
     </div>
   );
 }
+
+
