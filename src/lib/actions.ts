@@ -1,6 +1,7 @@
 "use server";
 
 import { redirect } from "next/navigation";
+import bcrypt from "bcryptjs";
 import { z } from "zod";
 import { createSession, createStudentSession, destroySession, destroyStudentSession, requireStudent, requireUser, verifyCredentials } from "./auth";
 import { EVENTS, EVENT_ORDER, ITEMS, isLowerBetter } from "./domain/items";
@@ -9,10 +10,10 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import {
-  addCheckin, addScore, createPlan, createStudent, deleteCheckin, deletePlan, deleteScore, deleteStudent,
-  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode,
+  addCheckin, addScore, createPlan, createStudent, createUser, deleteCheckin, deletePlan, deleteScore, deleteStudent,
+  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail,
   listGoals, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
-  updatePlan, updatePlanContent, updateStudent,
+  updatePlan, updatePlanContent, updateStudent, updateUser,
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";
@@ -372,4 +373,51 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
     examDate: student.examDate,
   });
   redirect(`/plans/${planId}?ok=updated`);
+}
+
+// ---------- 教练注册（多教练） ----------
+export async function registerAction(fd: FormData): Promise<void> {
+  const name = str(fd, "name").trim();
+  const email = str(fd, "email").trim().toLowerCase();
+  const password = str(fd, "password");
+  const confirm = str(fd, "confirm");
+  const invite = str(fd, "invite").trim();
+  if (!name) return redirect(`/register?error=${encodeURIComponent("请填写姓名")}`);
+  if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return redirect(`/register?error=${encodeURIComponent("邮箱格式不正确")}`);
+  if (password.length < 6) return redirect(`/register?error=${encodeURIComponent("密码至少 6 位")}`);
+  if (password !== confirm) return redirect(`/register?error=${encodeURIComponent("两次输入的密码不一致")}`);
+  const requiredInvite = (process.env.INVITE_CODE || "").trim();
+  if (requiredInvite && invite !== requiredInvite) return redirect(`/register?error=${encodeURIComponent("邀请码不正确")}`);
+  const exists = await findUserByEmail(email);
+  if (exists) return redirect(`/register?error=${encodeURIComponent("该邮箱已注册，请直接登录")}`);
+  const hash = await bcrypt.hash(password, 10);
+  const user = await createUser(email, hash, name);
+  await createSession({ id: user.id, email: user.email, name: user.name, role: user.role });
+  redirect("/");
+}
+
+// ---------- 账号设置：昵称 / 密码 ----------
+export async function updateProfileAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const name = str(fd, "name").trim();
+  if (!name) return errTo("/settings", "昵称不能为空");
+  await updateUser(user.id, { name });
+  // 更新会话里的昵称
+  await destroySession();
+  await createSession({ id: user.id, email: user.email, name, role: user.role });
+  redirect("/settings?ok=profile");
+}
+
+export async function changePasswordAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const current = str(fd, "current");
+  const next = str(fd, "next");
+  const confirm = str(fd, "confirm");
+  if (next.length < 6) return errTo("/settings", "新密码至少 6 位");
+  if (next !== confirm) return errTo("/settings", "两次输入的新密码不一致");
+  const verified = await verifyCredentials(user.email, current);
+  if (!verified) return errTo("/settings", "当前密码不正确");
+  const hash = await bcrypt.hash(next, 10);
+  await updateUser(user.id, { passwordHash: hash });
+  redirect("/settings?ok=password");
 }

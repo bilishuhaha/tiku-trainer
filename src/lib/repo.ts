@@ -270,3 +270,14 @@ export async function updatePlanContent(id: string, coachId: string, fields: Pla
   const sql = "UPDATE plans SET " + sets.join(",") + " WHERE id=? AND coach_id=?";
   await getDb().execute({ sql, args });
 }
+
+export async function updateUser(id: string, fields: { name?: string; passwordHash?: string }): Promise<void> {
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+  if (fields.name !== undefined) { sets.push("name=?"); args.push(fields.name); }
+  if (fields.passwordHash !== undefined) { sets.push("password_hash=?"); args.push(fields.passwordHash); }
+  if (!sets.length) return;
+  args.push(id);
+  const sql = "UPDATE users SET " + sets.join(",") + " WHERE id=?";
+  await getDb().execute({ sql, args });
+}

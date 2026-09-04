@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Dumbbell, LayoutDashboard, Users, LogOut } from "lucide-react";
+import { Dumbbell, LayoutDashboard, Users, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
 
@@ -8,6 +8,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const nav = [
     { href: "/", label: "仪表盘", icon: LayoutDashboard },
     { href: "/students", label: "学生管理", icon: Users },
+    { href: "/settings", label: "设置", icon: SettingsIcon },
   ];
   return (
     <div className="min-h-screen">
