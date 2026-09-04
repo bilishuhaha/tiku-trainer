@@ -28,6 +28,7 @@ body {
 }
 .label { @apply mb-1 block text-sm font-medium text-slate-700; }
 
+@page { size: A4; margin: 12mm; }
 @media print {
   .no-print { display: none !important; }
   body { background: white; }

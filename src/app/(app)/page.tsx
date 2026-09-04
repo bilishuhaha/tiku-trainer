@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Users, CalendarClock, AlertTriangle, ClipboardList, ArrowRight, Plus } from "lucide-react";
+import { Users, CalendarClock, AlertTriangle, ClipboardList, ArrowRight, Plus, Printer } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { listStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
@@ -31,6 +31,20 @@ export default async function DashboardPage() {
         <Link href="/students/new" className="btn btn-primary">
           <Plus className="h-4 w-4" /> 添加学生
         </Link>
+      </div>
+
+      {/* 新生身体评估表入口（第一节课用） */}
+      <div className="no-print flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50/70 px-4 py-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-600/10 text-emerald-700">
+            <Printer className="h-4 w-4" />
+          </div>
+          <div className="min-w-0">
+            <div className="text-sm font-semibold text-slate-900">新学生第一节课？先打印《新生身体评估表》</div>
+            <div className="truncate text-xs text-slate-500">让学生填写初始数据，回填系统后即可生成个性化计划</div>
+          </div>
+        </div>
+        <Link href="/assessment" className="btn btn-dark shrink-0 text-xs">打印 · 身体评估表</Link>
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
