@@ -30,6 +30,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
             </div>
             <button type="submit" className="btn btn-primary w-full">登录</button>
             <p className="text-xs text-slate-400">默认账号见项目 README（首次使用请尽快修改）。</p>
+            <p className="text-center text-xs text-slate-400">学生自己练？<a href="/s/login" className="text-slate-600 underline">前往学生入口 →</a></p>
           </form>
         </div>
       </div>

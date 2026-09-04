@@ -1,11 +1,12 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock, Smartphone, KeyRound, XCircle } from "lucide-react";
+import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
 import { findStudent, listGoals, listScores, latestScoresByItem, listPlans } from "@/lib/repo";
 import { ConfirmForm } from "@/components/forms";
 import { ErrorBanner } from "@/components/error-banner";
-import { deleteScoreAction, deleteStudentAction, generatePlanAction, setGoalAction, addScoreAction } from "@/lib/actions";
+import { clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
 import { calcAge, fmtDate, todayInputValue, weeksUntil, round1, round2 } from "@/lib/format";
 
@@ -27,6 +28,10 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const age = calcAge(student.birthDate);
   const weeks = weeksUntil(student.examDate);
   const hasLlm = !!process.env.OPENAI_API_KEY;
+  const hdrs = await headers();
+  const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "";
+  const proto = process.env.COOKIE_SECURE === "true" ? "https" : "http";
+  const portalUrl = host ? `${proto}://${host}/s/login` : "/s/login";
 
   const primaryScores = EVENT_ORDER.map((ev) => {
     const def = EVENTS[ev];
@@ -67,15 +72,60 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       </div>
 
       <ErrorBanner error={error} />
-      {ok === "saved" && (
-        <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">已保存 ✓</div>
-      )}
+      {ok === "saved" && <OkNote text="已保存 ✓" />}
+      {ok === "access" && <OkNote text="访问码已生成：请把访问码和下面的学生入口发给该学生。" />}
+      {ok === "access-off" && <OkNote text="已关闭该学生的个人版访问。" />}
 
       {student.injuryNote && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
           <strong>伤病/注意事项：</strong>{student.injuryNote}
         </div>
       )}
+
+      {/* 学生个人版 */}
+      <div className="card p-5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Smartphone className="h-5 w-5 text-slate-600" />
+            <h2 className="font-semibold text-slate-900">学生个人版（给学生自己练）</h2>
+          </div>
+          <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${student.accessCode ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+            {student.accessCode ? "已开通" : "未开通"}
+          </span>
+        </div>
+        {student.accessCode ? (
+          <div className="mt-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+            <div className="flex flex-wrap items-end gap-3">
+              <div>
+                <div className="text-xs text-slate-400">该学生的访问码（请单独发给他）</div>
+                <div className="mt-0.5 text-2xl font-bold tracking-[0.25em] text-slate-900">{student.accessCode}</div>
+              </div>
+              <div className="text-sm text-slate-500">
+                学生入口：<a href={portalUrl} target="_blank" className="text-emerald-600 underline">{portalUrl}</a>
+              </div>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">学生登录后只能看到自己的训练计划并打卡，看不到其他数据。</p>
+            <div className="mt-3 flex flex-wrap gap-2">
+              <form action={generateAccessCodeAction}>
+                <input type="hidden" name="studentId" value={id} />
+                <button type="submit" className="btn btn-outline text-xs"><KeyRound className="h-3.5 w-3.5" /> 重置访问码</button>
+              </form>
+              <form action={clearAccessCodeAction}>
+                <input type="hidden" name="studentId" value={id} />
+                <button type="submit" className="btn btn-ghost text-xs text-rose-600 hover:bg-rose-50"><XCircle className="h-3.5 w-3.5" /> 关闭学生访问</button>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3 rounded-xl border border-dashed border-slate-300 p-4">
+            <p className="text-sm text-slate-500">适合“没人盯着练”的学生：给他一个访问码，他自己登录就能看到每天练什么、做完打卡。</p>
+            <form action={generateAccessCodeAction} className="mt-3">
+              <input type="hidden" name="studentId" value={id} />
+              <button type="submit" className="btn btn-primary text-xs"><KeyRound className="h-3.5 w-3.5" /> 生成访问码，开通学生个人版</button>
+            </form>
+          </div>
+        )}
+      </div>
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         {primaryScores.map(({ ev, def, cur }) => (
@@ -319,5 +369,11 @@ function Sparkline({ history, lowerBetter }: { history: { value: number }[]; low
       <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
       <circle cx={W} cy={H - 4 - ((values[values.length - 1] - min) / span) * (H - 8)} r="3" fill={color} />
     </svg>
+  );
+}
+
+function OkNote({ text }: { text: string }) {
+  return (
+    <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{text}</div>
   );
 }

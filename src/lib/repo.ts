@@ -6,14 +6,15 @@ export interface StudentRow {
   id: string; coachId: string; name: string; gender: string;
   birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null;
-  injuryNote: string | null; note: string | null; createdAt: string; updatedAt: string;
+  injuryNote: string | null; note: string | null; accessCode: string | null; weekdays: string | null;
+  createdAt: string; updatedAt: string;
 }
 export interface GoalRow { id: string; studentId: string; event: string; target: number; note: string | null; }
 export interface ScoreRow { id: string; studentId: string; date: string; item: string; value: number; note: string | null; }
 export interface PlanRow {
   id: string; studentId: string; coachId: string; title: string; status: string;
   goalSummary: string | null; diagnosis: string | null; structure: string; coachNote: string | null;
-  aiMeta: string | null; examDate: string | null; createdAt: string; updatedAt: string;
+  aiMeta: string | null; examDate: string | null; startDate: string | null; createdAt: string; updatedAt: string;
 }
 
 type Row = Record<string, unknown>;
@@ -27,6 +28,7 @@ function mapStudent(r: Row): StudentRow {
     birthDate: (r.birth_date as string) ?? null, height: (r.height as number) ?? null, weight: (r.weight as number) ?? null,
     trainingYears: (r.training_years as number) ?? null, examDate: (r.exam_date as string) ?? null,
     goalNote: (r.goal_note as string) ?? null, injuryNote: (r.injury_note as string) ?? null, note: (r.note as string) ?? null,
+    accessCode: (r.access_code as string) ?? null, weekdays: (r.weekdays as string) ?? null,
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -41,7 +43,8 @@ function mapPlan(r: Row): PlanRow {
     id: r.id as string, studentId: r.student_id as string, coachId: r.coach_id as string, title: r.title as string,
     status: r.status as string, goalSummary: (r.goal_summary as string) ?? null, diagnosis: (r.diagnosis as string) ?? null,
     structure: r.structure as string, coachNote: (r.coach_note as string) ?? null, aiMeta: (r.ai_meta as string) ?? null,
-    examDate: (r.exam_date as string) ?? null, createdAt: r.created_at as string, updatedAt: r.updated_at as string,
+    examDate: (r.exam_date as string) ?? null, startDate: (r.start_date as string) ?? null,
+    createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
 
@@ -145,15 +148,15 @@ export async function deleteScore(id: string, studentId: string): Promise<void> 
 // ---------- plans ----------
 export interface PlanInput {
   studentId: string; coachId: string; title: string; status: string; goalSummary: string | null;
-  diagnosis: string | null; structure: string; coachNote: string | null; aiMeta: string | null; examDate: string | null;
+  diagnosis: string | null; structure: string; coachNote: string | null; aiMeta: string | null; examDate: string | null; startDate: string | null;
 }
 export async function createPlan(input: PlanInput): Promise<PlanRow> {
   const id = randomUUID();
   const t = nowIso();
   await getDb().execute({
-    sql: `INSERT INTO plans (id, student_id, coach_id, title, status, goal_summary, diagnosis, structure, coach_note, ai_meta, exam_date, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    args: [id, input.studentId, input.coachId, input.title, input.status, input.goalSummary, input.diagnosis, input.structure, input.coachNote, input.aiMeta, input.examDate, t, t],
+    sql: `INSERT INTO plans (id, student_id, coach_id, title, status, goal_summary, diagnosis, structure, coach_note, ai_meta, exam_date, start_date, created_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [id, input.studentId, input.coachId, input.title, input.status, input.goalSummary, input.diagnosis, input.structure, input.coachNote, input.aiMeta, input.examDate, input.startDate, t, t],
   });
   const rs = await getDb().execute({ sql: "SELECT * FROM plans WHERE id=?", args: [id] });
   return mapPlan(rs.rows[0] as Row);
@@ -178,4 +181,60 @@ export async function updatePlan(id: string, coachId: string, fields: { status?:
 }
 export async function deletePlan(id: string, coachId: string): Promise<void> {
   await getDb().execute({ sql: "DELETE FROM plans WHERE id=? AND coach_id=?", args: [id, coachId] });
+}
+
+// ---------- 学生个人版：访问码 / 训练日 ----------
+export async function findStudentByAccessCode(code: string): Promise<StudentRow | null> {
+  const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE access_code = ?", args: [code] });
+  return rs.rows.length ? mapStudent(rs.rows[0] as Row) : null;
+}
+export async function setStudentAccessCode(studentId: string, coachId: string, code: string | null): Promise<void> {
+  await getDb().execute({ sql: "UPDATE students SET access_code=?, updated_at=? WHERE id=? AND coach_id=?", args: [code, nowIso(), studentId, coachId] });
+}
+export async function setStudentWeekdays(studentId: string, weekdays: string | null): Promise<void> {
+  await getDb().execute({ sql: "UPDATE students SET weekdays=?, updated_at=? WHERE id=?", args: [weekdays, nowIso(), studentId] });
+}
+export async function findActivePlan(studentId: string): Promise<PlanRow | null> {
+  const rs = await getDb().execute({
+    sql: "SELECT * FROM plans WHERE student_id=? ORDER BY (status='confirmed') DESC, created_at DESC LIMIT 1",
+    args: [studentId],
+  });
+  return rs.rows.length ? mapPlan(rs.rows[0] as Row) : null;
+}
+
+// ---------- 学生打卡 ----------
+export interface CheckinRow { id: string; studentId: string; planId: string; date: string; dayIndex: number; note: string | null; createdAt: string; }
+function mapCheckin(r: Row): CheckinRow {
+  return { id: r.id as string, studentId: r.student_id as string, planId: r.plan_id as string, date: r.date as string, dayIndex: r.day_index as number, note: (r.note as string) ?? null, createdAt: r.created_at as string };
+}
+export async function findCheckinByPlanDate(planId: string, date: string): Promise<CheckinRow | null> {
+  const rs = await getDb().execute({ sql: "SELECT * FROM checkins WHERE plan_id=? AND date=?", args: [planId, date] });
+  return rs.rows.length ? mapCheckin(rs.rows[0] as Row) : null;
+}
+export async function addCheckin(studentId: string, planId: string, date: string, dayIndex: number): Promise<CheckinRow> {
+  const existing = await findCheckinByPlanDate(planId, date);
+  if (existing) return existing;
+  const id = randomUUID();
+  await getDb().execute({
+    sql: "INSERT INTO checkins (id, student_id, plan_id, date, day_index, note, created_at) VALUES (?,?,?,?,?,?,?)",
+    args: [id, studentId, planId, date, dayIndex, null, nowIso()],
+  });
+  return (await findCheckinByPlanDate(planId, date))!;
+}
+export async function deleteCheckin(planId: string, date: string): Promise<void> {
+  await getDb().execute({ sql: "DELETE FROM checkins WHERE plan_id=? AND date=?", args: [planId, date] });
+}
+export async function listCheckins(planId: string): Promise<CheckinRow[]> {
+  const rs = await getDb().execute({ sql: "SELECT * FROM checkins WHERE plan_id=? ORDER BY date ASC", args: [planId] });
+  return rs.rows.map((r) => mapCheckin(r as Row));
+}
+
+export async function findPlanForStudent(planId: string, studentId: string): Promise<PlanRow | null> {
+  const rs = await getDb().execute({ sql: "SELECT * FROM plans WHERE id=? AND student_id=?", args: [planId, studentId] });
+  return rs.rows.length ? mapPlan(rs.rows[0] as Row) : null;
+}
+
+export async function findStudentById(id: string): Promise<StudentRow | null> {
+  const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE id=?", args: [id] });
+  return rs.rows.length ? mapStudent(rs.rows[0] as Row) : null;
 }

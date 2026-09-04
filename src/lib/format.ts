@@ -8,10 +8,13 @@ export function fmtDate(iso: string | null | undefined, withTime = false): strin
   return `${base} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
-export function todayInputValue(): string {
-  const d = new Date();
+export function localDateKey(d: Date = new Date()): string {
   const pad = (n: number) => String(n).padStart(2, "0");
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export function todayInputValue(): string {
+  return localDateKey();
 }
 
 /** 计算到目标日期的周数（不足一周按一周计）。返回 null 表示未设置。 */

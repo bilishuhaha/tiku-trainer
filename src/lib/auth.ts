@@ -65,3 +65,50 @@ export async function verifyCredentials(email: string, password: string): Promis
 export async function loadUserFromDb(id: string): Promise<UserRow | null> {
   return findUserById(id);
 }
+
+// ================= 学生个人版会话 =================
+const STUDENT_COOKIE = "tk_student";
+const STUDENT_MAX_AGE_SEC = 60 * 60 * 24 * 90; // 90 天
+
+export interface StudentSession { id: string; name: string; }
+
+export async function createStudentSession(s: StudentSession): Promise<void> {
+  const token = await new SignJWT({ name: s.name })
+    .setProtectedHeader({ alg: "HS256" })
+    .setSubject(s.id)
+    .setIssuedAt()
+    .setExpirationTime(Math.floor(Date.now() / 1000) + STUDENT_MAX_AGE_SEC)
+    .sign(getSecret());
+  const store = await cookies();
+  store.set(STUDENT_COOKIE, token, {
+    httpOnly: true,
+    sameSite: "lax",
+    secure: process.env.COOKIE_SECURE === "true",
+    path: "/",
+    maxAge: STUDENT_MAX_AGE_SEC,
+  });
+}
+
+export async function destroyStudentSession(): Promise<void> {
+  const store = await cookies();
+  store.delete(STUDENT_COOKIE);
+}
+
+export async function getStudentSession(): Promise<StudentSession | null> {
+  const store = await cookies();
+  const token = store.get(STUDENT_COOKIE)?.value;
+  if (!token) return null;
+  try {
+    const { payload } = await jwtVerify(token, getSecret());
+    if (!payload.sub) return null;
+    return { id: payload.sub, name: (payload.name as string) || "学生" };
+  } catch {
+    return null;
+  }
+}
+
+export async function requireStudent(): Promise<StudentSession> {
+  const s = await getStudentSession();
+  if (!s) redirect("/s/login");
+  return s;
+}

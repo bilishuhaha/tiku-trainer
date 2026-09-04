@@ -2,14 +2,16 @@
 
 import { redirect } from "next/navigation";
 import { z } from "zod";
-import { createSession, destroySession, requireUser, verifyCredentials } from "./auth";
+import { createSession, createStudentSession, destroySession, destroyStudentSession, requireStudent, requireUser, verifyCredentials } from "./auth";
 import { EVENTS, ITEMS } from "./domain/items";
 import { buildPlanDoc } from "./domain/plan";
 import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
+import { localDateKey } from "./format";
 import {
-  addScore, createPlan, createStudent, deletePlan, deleteScore, deleteStudent, findPlan,
-  findStudent, listGoals, latestScoresByItem, setGoal, updatePlan, updateStudent,
+  addCheckin, addScore, createPlan, createStudent, deleteCheckin, deletePlan, deleteScore, deleteStudent,
+  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode,
+  listGoals, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays, updatePlan, updateStudent,
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";
@@ -176,6 +178,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
     coachNote: null,
     aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek, generatedAt: doc.meta.generatedAt }),
     examDate: student.examDate,
+    startDate: localDateKey(),
   });
   redirect(`/plans/${plan.id}`);
 }
@@ -206,4 +209,78 @@ export async function deletePlanAction(fd: FormData): Promise<void> {
   const studentId = plan.studentId;
   await deletePlan(id, user.id);
   redirect(`/students/${studentId}`);
+}
+
+// ---------- 教练端：学生个人版访问码 ----------
+const CODE_ALPHABET = "ABCDEFGHJKMNPQRSTUVWXYZ23456789";
+function randomCode(len = 6): string {
+  let out = "";
+  for (let i = 0; i < len; i++) out += CODE_ALPHABET[Math.floor(Math.random() * CODE_ALPHABET.length)];
+  return out;
+}
+
+export async function generateAccessCodeAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  const code = randomCode();
+  await setStudentAccessCode(studentId, user.id, code);
+  redirect(`/students/${studentId}?ok=access`);
+}
+
+export async function clearAccessCodeAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  await setStudentAccessCode(studentId, user.id, null);
+  redirect(`/students/${studentId}?ok=access-off`);
+}
+
+// ---------- 学生端：登录 / 退出 ----------
+export async function studentLoginAction(fd: FormData): Promise<void> {
+  const code = str(fd, "code").trim().toUpperCase();
+  if (!code) return redirect(`/s/login?error=${encodeURIComponent("请输入访问码")}`);
+  const student = await findStudentByAccessCode(code);
+  if (!student) return redirect(`/s/login?error=${encodeURIComponent("访问码不正确，请向教练核对")}`);
+  await createStudentSession({ id: student.id, name: student.name });
+  redirect("/s");
+}
+
+export async function studentLogoutAction(): Promise<void> {
+  await destroyStudentSession();
+  redirect("/s/login");
+}
+
+// ---------- 学生端：打卡 ----------
+export async function toggleCheckinAction(fd: FormData): Promise<void> {
+  const me = await requireStudent();
+  const planId = str(fd, "planId");
+  const date = str(fd, "date");
+  const dayIndex = Number(str(fd, "dayIndex"));
+  const plan = await findPlanForStudent(planId, me.id);
+  if (!plan) return redirect("/s?error=" + encodeURIComponent("计划不存在"));
+  if (!date) return redirect("/s?error=" + encodeURIComponent("日期无效"));
+  const existing = await findCheckinByPlanDate(planId, date);
+  if (existing) {
+    await deleteCheckin(planId, date);
+  } else {
+    await addCheckin(me.id, planId, date, Number.isFinite(dayIndex) ? dayIndex : 0);
+  }
+  redirect("/s");
+}
+
+// ---------- 学生端：我的训练日 ----------
+export async function setMyWeekdaysAction(fd: FormData): Promise<void> {
+  const me = await requireStudent();
+  const active = await findActivePlan(me.id);
+  if (!active) return redirect("/s?error=" + encodeURIComponent("还没有训练计划"));
+  const doc = JSON.parse(active.structure) as { meta?: { daysPerWeek?: number } };
+  const k = doc.meta?.daysPerWeek ?? 6;
+  const values = fd.getAll("wd").map((x) => Number(x)).filter((n) => n >= 1 && n <= 7);
+  const uniq = [...new Set(values)].sort((x, y) => x - y);
+  if (uniq.length !== k) return redirect("/s?error=" + encodeURIComponent(`请正好选择 ${k} 天作为训练日`));
+  await setStudentWeekdays(me.id, uniq.join(","));
+  redirect("/s");
 }

@@ -12,10 +12,11 @@ const db = createClient({ url });
 
 const DDL = [
   `CREATE TABLE IF NOT EXISTS users (id TEXT PRIMARY KEY, email TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL, name TEXT NOT NULL, role TEXT NOT NULL DEFAULT 'coach', created_at TEXT NOT NULL)`,
-  `CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY, coach_id TEXT NOT NULL, name TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'male', birth_date TEXT, height REAL, weight REAL, training_years REAL, exam_date TEXT, goal_note TEXT, injury_note TEXT, note TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS students (id TEXT PRIMARY KEY, coach_id TEXT NOT NULL, name TEXT NOT NULL, gender TEXT NOT NULL DEFAULT 'male', birth_date TEXT, height REAL, weight REAL, training_years REAL, exam_date TEXT, goal_note TEXT, injury_note TEXT, note TEXT, access_code TEXT, weekdays TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
   `CREATE TABLE IF NOT EXISTS goals (id TEXT PRIMARY KEY, student_id TEXT NOT NULL, event TEXT NOT NULL, target REAL NOT NULL, note TEXT, UNIQUE(student_id, event))`,
   `CREATE TABLE IF NOT EXISTS scores (id TEXT PRIMARY KEY, student_id TEXT NOT NULL, date TEXT NOT NULL, item TEXT NOT NULL, value REAL NOT NULL, note TEXT)`,
-  `CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, student_id TEXT NOT NULL, coach_id TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', goal_summary TEXT, diagnosis TEXT, structure TEXT NOT NULL, coach_note TEXT, ai_meta TEXT, exam_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS plans (id TEXT PRIMARY KEY, student_id TEXT NOT NULL, coach_id TEXT NOT NULL, title TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', goal_summary TEXT, diagnosis TEXT, structure TEXT NOT NULL, coach_note TEXT, ai_meta TEXT, exam_date TEXT, start_date TEXT, created_at TEXT NOT NULL, updated_at TEXT NOT NULL)`,
+  `CREATE TABLE IF NOT EXISTS checkins (id TEXT PRIMARY KEY, student_id TEXT NOT NULL, plan_id TEXT NOT NULL, date TEXT NOT NULL, day_index INTEGER NOT NULL, note TEXT, created_at TEXT NOT NULL)`,
 ];
 for (const d of DDL) await db.execute(d);
 
@@ -43,9 +44,9 @@ const dup = await db.execute({ sql: "SELECT id FROM students WHERE coach_id=? AN
 if (!dup.rows.length) {
   const sid = randomUUID();
   await db.execute({
-    sql: `INSERT INTO students (id, coach_id, name, gender, birth_date, height, weight, training_years, exam_date, goal_note, injury_note, note, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-    args: [sid, coachId, sampleName, "male", "2008-06-15", 178, 70, 1, "2027-04-10", "目标：XX 大学体育教育专业，术科 255 分", null, "高三，每天下午 4:30-6:30 训练", now, now],
+    sql: `INSERT INTO students (id, coach_id, name, gender, birth_date, height, weight, training_years, exam_date, goal_note, injury_note, note, access_code, weekdays, created_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [sid, coachId, sampleName, "male", "2008-06-15", 178, 70, 1, "2027-04-10", "目标：XX 大学体育教育专业，术科 255 分", null, "高三，每天下午 4:30-6:30 训练", "5JQ7KX", null, now, now],
   });
   const goals = [
     ["sprint", 11.9, "100米目标"],
