@@ -1,3 +1,4 @@
+# 每 5 分钟访问一次网站，防止 Render 免费版休眠（15 分钟无流量会冷启动）
 name: Keep Render Awake
 on:
   schedule:
