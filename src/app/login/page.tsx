@@ -147,7 +147,7 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
               学生入口 <ArrowRight className="h-3 w-3" />
             </Link>
           </div>
-          <p className="mt-3 text-center text-[11px] text-slate-400">演示默认账号见项目 README · 首次登录后请在“设置”中修改密码</p>
+          <p className="mt-3 text-center text-[11px] text-slate-400">教练请用注册邮箱登录 · 学生请用教练提供的访问码登录</p>
 
           {/* 注意事项 */}
           <div className="mt-7 rounded-2xl border border-amber-200/70 bg-amber-50/70 p-4">

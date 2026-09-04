@@ -71,6 +71,16 @@ export async function listStudents(coachId: string): Promise<StudentRow[]> {
   const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE coach_id = ? ORDER BY exam_date IS NULL, exam_date ASC, name ASC", args: [coachId] });
   return rs.rows.map((r) => mapStudent(r as Row));
 }
+/** 每个学生已生成计划的数量（一次查询，避免学生列表 N+1 慢查询） */
+export async function countPlansByCoach(coachId: string): Promise<Record<string, number>> {
+  const rs = await getDb().execute({
+    sql: "SELECT student_id, COUNT(*) AS n FROM plans WHERE coach_id=? GROUP BY student_id",
+    args: [coachId],
+  });
+  const out: Record<string, number> = {};
+  for (const r of rs.rows as Row[]) out[r.student_id as string] = Number(r.n);
+  return out;
+}
 export async function findStudent(id: string, coachId: string): Promise<StudentRow | null> {
   const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE id = ? AND coach_id = ?", args: [id, coachId] });
   return rs.rows.length ? mapStudent(rs.rows[0] as Row) : null;
@@ -97,6 +107,7 @@ export async function updateStudent(id: string, coachId: string, input: StudentI
   return findStudent(id, coachId);
 }
 export async function deleteStudent(id: string, coachId: string): Promise<void> {
+  await getDb().execute({ sql: "DELETE FROM checkins WHERE plan_id IN (SELECT id FROM plans WHERE student_id=? AND coach_id=?)", args: [id, coachId] });
   await getDb().execute({ sql: "DELETE FROM goals WHERE student_id=?", args: [id] });
   await getDb().execute({ sql: "DELETE FROM scores WHERE student_id=?", args: [id] });
   await getDb().execute({ sql: "DELETE FROM plans WHERE student_id=? AND coach_id=?", args: [id, coachId] });
@@ -180,6 +191,7 @@ export async function updatePlan(id: string, coachId: string, fields: { status?:
   await getDb().execute({ sql: `UPDATE plans SET ${sets.join(",")} WHERE id=? AND coach_id=?`, args });
 }
 export async function deletePlan(id: string, coachId: string): Promise<void> {
+  await getDb().execute({ sql: "DELETE FROM checkins WHERE plan_id=?", args: [id] });
   await getDb().execute({ sql: "DELETE FROM plans WHERE id=? AND coach_id=?", args: [id, coachId] });
 }
 

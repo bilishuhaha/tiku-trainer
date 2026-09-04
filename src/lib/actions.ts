@@ -17,7 +17,7 @@ import {
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";
-const numOrNull = (s: string) => (s === "" ? null : Number(s));
+const numOrNull = (s: string) => { if (s === "") return null; const n = Number(s); return Number.isFinite(n) ? n : null; };
 const dateOrNull = (s: string) => (s === "" ? null : s);
 
 /** 统一错误跳转：带 ?error= 回到原页面展示 */

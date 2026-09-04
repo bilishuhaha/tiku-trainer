@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Users, CalendarClock, AlertTriangle, ClipboardList, ArrowRight, Plus } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { listStudents, listPlans } from "@/lib/repo";
+import { listStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 import { ConfirmForm } from "@/components/forms";
 import { deleteStudentAction } from "@/lib/actions";
@@ -18,16 +18,8 @@ export default async function DashboardPage() {
     const w = weeksUntil(s.examDate);
     return w !== null && w >= 0 && w <= 8;
   });
-  const noRecent: typeof students = [];
-  const todayStr = new Date().toISOString().slice(0, 10);
-  for (const s of students) {
-    void todayStr;
-    // 简单起见：显示最近没有计划的学生提醒由学生列表承担
-    noRecent.push(s);
-  }
-  const planCounts = await Promise.all(students.map((s) => listPlans(s.id).then((p) => [s.id, p.length] as const)));
-  const planCountMap = Object.fromEntries(planCounts);
-  const totalPlans = planCounts.reduce((a, [, c]) => a + c, 0);
+  const planCountMap = await countPlansByCoach(user.id);
+  const totalPlans = Object.values(planCountMap).reduce((a, c) => a + c, 0);
 
   return (
     <div className="space-y-6">

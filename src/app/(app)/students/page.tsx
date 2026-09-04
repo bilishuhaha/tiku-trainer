@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Plus, ChevronRight } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { listStudents, listPlans } from "@/lib/repo";
+import { listStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 
 export const metadata = { title: "学生管理" };
@@ -9,10 +9,8 @@ export const metadata = { title: "学生管理" };
 export default async function StudentsPage() {
   const user = await requireUser();
   const students = await listStudents(user.id);
-  const counts = new Map<string, number>();
-  for (const s of students) {
-    counts.set(s.id, (await listPlans(s.id)).length);
-  }
+  const planCounts = await countPlansByCoach(user.id);
+  const counts = new Map<string, number>(Object.entries(planCounts));
   return (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
