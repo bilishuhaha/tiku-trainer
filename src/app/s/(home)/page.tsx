@@ -1,11 +1,13 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown } from "lucide-react";
+import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown, MessageSquare } from "lucide-react";
 import { requireStudent } from "@/lib/auth";
-import { findActivePlan, findStudentById, listCheckins, listGoals } from "@/lib/repo";
-import { setMyWeekdaysAction } from "@/lib/actions";
-import { ErrorBanner } from "@/components/error-banner";
+import { findActivePlan, findStudentById, listCheckins, listFeedbackByStudent, listGoals } from "@/lib/repo";
+import { setMyWeekdaysAction, submitFeedbackAction } from "@/lib/actions";
+import { ErrorBanner, OkBanner } from "@/components/error-banner";
 import CheckinControl from "@/components/student-checkin";
+import PlanUpdatedBanner from "@/components/plan-updated-banner";
+import PendingSubmitButton from "@/components/pending-submit-button";
 import { EVENTS, EVENT_ORDER, itemUnit } from "@/lib/domain/items";
 import type { PlanDoc, DayDoc, BlockDoc } from "@/lib/domain/types";
 import { localDateKey, weeksUntil } from "@/lib/format";
@@ -16,13 +18,14 @@ import {
 export const metadata = { title: "我的训练" };
 
 export default async function StudentHomePage({ searchParams }: { searchParams: Promise<{ error?: string; ok?: string }> }) {
-  const { error } = await searchParams;
+  const { error, ok } = await searchParams;
   const me = await requireStudent();
   // 并行查询：减少跨区网络下“点开页面”的等待
-  const [student, plan, goals] = await Promise.all([
+  const [student, plan, goals, feedback] = await Promise.all([
     findStudentById(me.id),
     findActivePlan(me.id),
     listGoals(me.id),
+    listFeedbackByStudent(me.id, 6),
   ]);
   if (!student) redirect("/s/login");
 
@@ -34,6 +37,10 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-4">
       <ErrorBanner error={error} />
+      <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : null} />
+
+      {/* 教练更新计划提示 */}
+      {plan && plan.noticeRev > plan.seenRev && <PlanUpdatedBanner planId={plan.id} />}
 
       {/* 问候 + 目标 */}
       <div>
@@ -65,6 +72,11 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
         <NoPlanCard />
       ) : (
         <PlanBody studentId={student.id} studentWeekdays={student.weekdays} planId={plan.id} planCreatedAt={plan.createdAt} planStartDate={plan.startDate} planStatus={plan.status} structure={plan.structure} />
+      )}
+
+      {/* 训练反馈 */}
+      {plan && (
+        <FeedbackCard recent={feedback} />
       )}
 
       <p className="pb-6 pt-2 text-center text-[11px] text-slate-400">
@@ -305,3 +317,81 @@ function RestTip({ icon, title, sub }: { icon: React.ReactNode; title: string; s
   );
 }
 
+
+
+
+
+const FEEL_OPTIONS = [
+  { v: 1, label: "很轻松" },
+  { v: 2, label: "正好" },
+  { v: 3, label: "偏累" },
+  { v: 4, label: "很累" },
+  { v: 5, label: "练不动" },
+];
+const FEEL_ICON = ["", "😄", "🙂", "😮‍💨", "😫", "🥵"];
+function feelLabel(v: number | null) {
+  if (!v) return "";
+  return FEEL_OPTIONS.find((o) => o.v === v)?.label ?? "";
+}
+
+function FeedbackCard({ recent }: { recent: { date: string; feel: number | null; soreness: string | null; note: string | null }[] }) {
+  return (
+    <div className="card p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <MessageSquare className="h-5 w-5 text-emerald-600" />
+        <h2 className="font-semibold text-slate-900">练完写个反馈（几秒钟）</h2>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">会自动同步给教练，教练会据此调整你的训练计划。</p>
+      <form action={submitFeedbackAction} className="space-y-3">
+        <input type="hidden" name="date" value={localDateKey(new Date())} />
+        <div>
+          <div className="label">今天练得怎么样？</div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {FEEL_OPTIONS.map((o) => (
+              <label key={o.v} className="flex cursor-pointer flex-col items-center gap-0.5 rounded-xl border border-slate-200 bg-white px-1 py-2 text-center text-[11px] text-slate-600 has-[:checked]:border-emerald-500 has-[:checked]:bg-emerald-50 has-[:checked]:font-semibold has-[:checked]:text-emerald-700">
+                <input type="radio" name="feel" value={o.v} className="hidden" />
+                <span className="text-base leading-none">{FEEL_ICON[o.v]}</span>
+                {o.label}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div>
+          <label className="label" htmlFor="fb-sore">身体有没有不适？</label>
+          <select id="fb-sore" name="soreness" defaultValue="" className="input">
+            <option value="">没有特别不适</option>
+            <option value="正常肌肉酸痛">正常肌肉酸痛（练后第 2 天明显）</option>
+            <option value="膝盖">膝盖</option>
+            <option value="脚踝">脚踝</option>
+            <option value="小腿">小腿</option>
+            <option value="大腿">大腿</option>
+            <option value="腰">腰</option>
+            <option value="肩">肩</option>
+            <option value="其它">其它（在备注写具体）</option>
+          </select>
+        </div>
+        <div>
+          <label className="label" htmlFor="fb-note">备注（选填）</label>
+          <textarea id="fb-note" name="note" rows={2} maxLength={400} className="input" placeholder="例如：最后两组加速没顶下来 / 脚踝有点酸但不影响训练" />
+        </div>
+        <PendingSubmitButton pendingText="保存中…" className="btn w-full bg-emerald-600 py-2.5 text-white hover:bg-emerald-700">提交反馈</PendingSubmitButton>
+      </form>
+
+      {recent.length > 0 && (
+        <div className="mt-4 border-t border-slate-100 pt-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">我最近的反馈</div>
+          <ul className="space-y-1.5">
+            {recent.slice(0, 5).map((x) => (
+              <li key={x.date} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
+                <span className="font-medium text-slate-400">{x.date}</span>
+                {x.feel ? <span className="rounded-full bg-slate-100 px-2 py-0.5">感受：{feelLabel(x.feel)}</span> : null}
+                {x.soreness ? <span className="rounded-full bg-amber-50 px-2 py-0.5 text-amber-700">{x.soreness}</span> : null}
+                {x.note ? <span className="min-w-0 flex-1 truncate">{x.note}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}

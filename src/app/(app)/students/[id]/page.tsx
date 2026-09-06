@@ -1,13 +1,13 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock, Smartphone, KeyRound, XCircle } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock, Smartphone, KeyRound, XCircle, MessageSquare, RefreshCcw } from "lucide-react";
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
-import { findStudent, listGoals, listScores, latestScoresByItem, listPlans } from "@/lib/repo";
+import { findStudent, listFeedbackByStudent, listGoals, listScores, latestScoresByItem, listPlans } from "@/lib/repo";
 import { ConfirmForm } from "@/components/forms";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner } from "@/components/error-banner";
-import { clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction } from "@/lib/actions";
+import { adjustPlanFromFeedbackAction, clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
 import { calcAge, fmtDate, todayInputValue, weeksUntil, round1, round2 } from "@/lib/format";
 
@@ -20,12 +20,13 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const student = await findStudent(id, user.id);
   if (!student) notFound();
 
-  // 并行查询目标/成绩/计划，减少跨区网络下点开学生档案的等待
-  const [goals, scores, latest, plans] = await Promise.all([
+  // 并行查询目标/成绩/计划/反馈，减少跨区网络下点开学生档案的等待
+  const [goals, scores, latest, plans, feedback] = await Promise.all([
     listGoals(id),
     listScores(id),
     latestScoresByItem(id),
     listPlans(id),
+    listFeedbackByStudent(id, 20),
   ]);
   const goalMap: Record<string, number | null> = {};
   for (const g of goals) goalMap[g.event] = g.target;
@@ -79,6 +80,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       {ok === "saved" && <OkNote text="已保存 ✓" />}
       {ok === "access" && <OkNote text="访问码已生成：请把访问码和下面的学生入口发给该学生。" />}
       {ok === "access-off" && <OkNote text="已关闭该学生的个人版访问。" />}
+      {ok === "adjusted" && <OkNote text="已根据学生最新反馈自动更新计划（已回到草稿）。学生端会收到“计划已更新”提示；请到计划页核对后重新确认。" />}
 
       {student.injuryNote && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
@@ -318,6 +320,9 @@ export default async function StudentDetailPage({ params, searchParams }: { para
           </div>
         )}
       </div>
+
+      {/* 学生训练反馈（自动同步 + 一键按反馈调整计划） */}
+      <StudentFeedbackSection feedback={feedback} hasPlan={plans.length > 0} studentId={id} hasLlm={hasLlm} />
     </div>
   );
 }
@@ -382,4 +387,72 @@ function OkNote({ text }: { text: string }) {
   );
 }
 
+
+
+
+
+const FB_FEEL_LABEL: Record<number, string> = { 1: "很轻松", 2: "正好", 3: "偏累", 4: "很累", 5: "练不动" };
+
+function StudentFeedbackSection({ feedback, hasPlan, studentId, hasLlm }: {
+  feedback: { date: string; feel: number | null; soreness: string | null; note: string | null; createdAt: string }[];
+  hasPlan: boolean;
+  studentId: string;
+  hasLlm: boolean;
+}) {
+  return (
+    <div className="card p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <MessageSquare className="h-5 w-5 text-emerald-600" />
+        <h2 className="font-semibold text-slate-900">学生训练反馈（学生端自动同步）</h2>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">
+        学生在“我的训练”里提交后会自动出现在这里，不用你再逐条录入。
+      </p>
+
+      {feedback.length === 0 ? (
+        <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">还没有收到反馈——让学生练完在手机学生端填一下即可。</p>
+      ) : (
+        <ul className="space-y-2">
+          {feedback.slice(0, 12).map((x) => (
+            <li key={x.date + x.createdAt} className="rounded-xl border border-slate-100 bg-slate-50/60 px-3 py-2.5">
+              <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                <span className="font-medium text-slate-500">{fmtDate(x.date)}</span>
+                {x.feel ? (
+                  <span className={`rounded-full px-2 py-0.5 ${(x.feel ?? 0) >= 4 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700"}`}>
+                    感受 {FB_FEEL_LABEL[x.feel]}
+                  </span>
+                ) : null}
+                {x.soreness && x.soreness !== "无" ? (
+                  <span className="rounded-full bg-rose-50 px-2 py-0.5 text-rose-600">{x.soreness}</span>
+                ) : null}
+              </div>
+              {x.note ? <p className="mt-1 text-xs leading-relaxed text-slate-600">{x.note}</p> : null}
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {hasPlan && (
+        <div className="mt-4 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+          <form action={adjustPlanFromFeedbackAction} className="flex flex-wrap items-center gap-2">
+            <input type="hidden" name="studentId" value={studentId} />
+            <div className="min-w-0 flex-1 text-xs leading-relaxed text-slate-600">
+              根据<b>最新成绩 + 上面这些反馈</b>自动重建课表：明显疲劳/不适会提示先恢复减量。
+              调整后学生端会收到“计划已更新”提示，计划回到草稿，请核对后重新确认。
+            </div>
+            {hasLlm && (
+              <label className="flex cursor-pointer items-center gap-1.5 text-xs text-slate-600">
+                <input type="checkbox" name="useLlm" value="1" className="accent-emerald-600" />
+                <Sparkles className="h-3.5 w-3.5" /> AI 润色
+              </label>
+            )}
+            <PendingSubmitButton className="btn btn-dark text-xs" pendingText="自动调整中…">
+              <RefreshCcw className="h-3.5 w-3.5" /> 按反馈自动调整计划
+            </PendingSubmitButton>
+          </form>
+        </div>
+      )}
+    </div>
+  );
+}
 

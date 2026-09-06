@@ -14,7 +14,7 @@ export interface ScoreRow { id: string; studentId: string; date: string; item: s
 export interface PlanRow {
   id: string; studentId: string; coachId: string; title: string; status: string;
   goalSummary: string | null; diagnosis: string | null; structure: string; coachNote: string | null;
-  aiMeta: string | null; examDate: string | null; startDate: string | null; createdAt: string; updatedAt: string;
+  aiMeta: string | null; examDate: string | null; startDate: string | null; noticeRev: number; seenRev: number; createdAt: string; updatedAt: string;
 }
 
 type Row = Record<string, unknown>;
@@ -44,6 +44,7 @@ function mapPlan(r: Row): PlanRow {
     status: r.status as string, goalSummary: (r.goal_summary as string) ?? null, diagnosis: (r.diagnosis as string) ?? null,
     structure: r.structure as string, coachNote: (r.coach_note as string) ?? null, aiMeta: (r.ai_meta as string) ?? null,
     examDate: (r.exam_date as string) ?? null, startDate: (r.start_date as string) ?? null,
+    noticeRev: Number(r.notice_rev ?? 0), seenRev: Number(r.seen_rev ?? 0),
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -293,3 +294,69 @@ export async function updateUser(id: string, fields: { name?: string; passwordHa
   const sql = "UPDATE users SET " + sets.join(",") + " WHERE id=?";
   await getDb().execute({ sql, args });
 }
+
+
+// ================= 训练反馈（学生 -> 教练） =================
+export interface FeedbackRow {
+  id: string;
+  studentId: string;
+  planId: string | null;
+  date: string;
+  feel: number | null;      // 1-5：很轻松 / 正好 / 偏累 / 很累 / 练不动
+  soreness: string | null;  // 不适部位说明
+  note: string | null;
+  createdAt: string;
+}
+function mapFeedback(r: Row): FeedbackRow {
+  return {
+    id: r.id as string,
+    studentId: r.student_id as string,
+    planId: (r.plan_id as string) ?? null,
+    date: r.date as string,
+    feel: r.feel == null ? null : Number(r.feel),
+    soreness: (r.soreness as string) ?? null,
+    note: (r.note as string) ?? null,
+    createdAt: r.created_at as string,
+  };
+}
+
+export async function createFeedback(input: {
+  studentId: string; planId: string | null; date: string;
+  feel: number | null; soreness: string | null; note: string | null;
+}): Promise<FeedbackRow> {
+  const id = randomUUID();
+  const t = nowIso();
+  // 同一天只保留一份：重复提交视为“修改今天的反馈”
+  await getDb().execute({ sql: "DELETE FROM feedback WHERE student_id=? AND date=?", args: [input.studentId, input.date] });
+  await getDb().execute({
+    sql: `INSERT INTO feedback (id, student_id, plan_id, date, feel, soreness, note, created_at)
+          VALUES (?,?,?,?,?,?,?,?)`,
+    args: [id, input.studentId, input.planId, input.date, input.feel, input.soreness, input.note, t],
+  });
+  return { id, studentId: input.studentId, planId: input.planId, date: input.date, feel: input.feel, soreness: input.soreness, note: input.note, createdAt: nowIso() };
+}
+
+export async function listFeedbackByStudent(studentId: string, limit = 50): Promise<FeedbackRow[]> {
+  const rs = await getDb().execute({
+    sql: "SELECT * FROM feedback WHERE student_id=? ORDER BY date DESC, created_at DESC LIMIT ?",
+    args: [studentId, limit],
+  });
+  return rs.rows.map((r) => mapFeedback(r as Row));
+}
+
+/** 学生端“计划已更新”提示：教练更新计划内容时 +1 */
+export async function bumpPlanNotice(planId: string, coachId: string): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE plans SET notice_rev = notice_rev + 1, updated_at=? WHERE id=? AND coach_id=?",
+    args: [nowIso(), planId, coachId],
+  });
+}
+
+/** 学生已读更新提示 */
+export async function ackPlanNotice(planId: string, studentId: string): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE plans SET seen_rev = notice_rev WHERE id=? AND student_id=?",
+    args: [planId, studentId],
+  });
+}
+

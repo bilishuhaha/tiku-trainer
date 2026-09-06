@@ -138,6 +138,17 @@ const DDL: string[] = [
   )`,
   `CREATE UNIQUE INDEX IF NOT EXISTS idx_checkins_plan_date ON checkins(plan_id, date)`,
   `CREATE INDEX IF NOT EXISTS idx_checkins_student ON checkins(student_id, date)`,
+  `CREATE TABLE IF NOT EXISTS feedback (
+    id TEXT PRIMARY KEY,
+    student_id TEXT NOT NULL,
+    plan_id TEXT,
+    date TEXT NOT NULL,
+    feel INTEGER,
+    soreness TEXT,
+    note TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_feedback_student ON feedback(student_id, date)`,
 ];
 
 let db: Db | null = null;
@@ -196,6 +207,8 @@ async function ensureSqliteColumns(instance: Db) {
   await addColumnIfMissing("students", "access_code", "ALTER TABLE students ADD COLUMN access_code TEXT");
   await addColumnIfMissing("students", "weekdays", "ALTER TABLE students ADD COLUMN weekdays TEXT");
   await addColumnIfMissing("plans", "start_date", "ALTER TABLE plans ADD COLUMN start_date TEXT");
+  await addColumnIfMissing("plans", "notice_rev", "ALTER TABLE plans ADD COLUMN notice_rev INTEGER NOT NULL DEFAULT 0");
+  await addColumnIfMissing("plans", "seen_rev", "ALTER TABLE plans ADD COLUMN seen_rev INTEGER NOT NULL DEFAULT 0");
 }
 
 export function getDb(): Db {
@@ -216,3 +229,4 @@ export async function initDatabaseForTests(): Promise<void> {
 export function nowIso(): string {
   return new Date().toISOString();
 }
+

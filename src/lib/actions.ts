@@ -10,9 +10,10 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import {
-  addCheckin, addScore, createPlan, createStudent, createUser, deleteCheckin, deletePlan, deleteScore, deleteStudent,
+  ackPlanNotice, addCheckin, addScore, bumpPlanNotice, createFeedback, createPlan, createStudent, createUser,
+  deleteCheckin, deletePlan, deleteScore, deleteStudent,
   findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail,
-  listGoals, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
+  listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
   updatePlan, updatePlanContent, updateStudent, updateUser,
 } from "./repo";
 
@@ -139,6 +140,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
   if (!student) return errTo("/students", "学生不存在");
   const daysRaw = Number(str(fd, "daysPerWeek") || "6");
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
+  const hadPlan = (await listPlans(studentId)).length > 0;
   const goals = await listGoals(studentId);
   const latest = await latestScoresByItem(studentId);
   const goalMap: Record<EventKey, number | null> = { sprint: null, tripleJump: null, shotPut: null };
@@ -182,6 +184,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
     examDate: student.examDate,
     startDate: localDateKey(),
   });
+  if (hadPlan) await bumpPlanNotice(plan.id, user.id);
   redirect(`/plans/${plan.id}`);
 }
 
@@ -390,6 +393,7 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
     startDate: localDateKey(),
     examDate: student.examDate,
   });
+  await bumpPlanNotice(planId, user.id);
   redirect(`/plans/${planId}?ok=updated`);
 }
 
@@ -441,3 +445,118 @@ export async function changePasswordAction(fd: FormData): Promise<void> {
 }
 
 
+
+
+
+
+// ================= 训练反馈闭环（学生反馈 -> 教练自动调整） =================
+
+// 学生：提交 / 修改今天的训练反馈（同一天只保留最新一份）
+export async function submitFeedbackAction(fd: FormData): Promise<void> {
+  const me = await requireStudent();
+  const dateRaw = str(fd, "date").trim();
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(dateRaw) ? dateRaw : localDateKey();
+  const feelRaw = Number(str(fd, "feel"));
+  const feel = Number.isInteger(feelRaw) && feelRaw >= 1 && feelRaw <= 5 ? feelRaw : null;
+  const soreness = str(fd, "soreness").trim().slice(0, 60) || null;
+  const note = str(fd, "note").trim().slice(0, 400) || null;
+  if (!feel && !soreness && !note) return redirect("/s?error=" + encodeURIComponent("请至少填写一项反馈内容"));
+  const plan = await findActivePlan(me.id);
+  await createFeedback({ studentId: me.id, planId: plan ? plan.id : null, date, feel, soreness, note });
+  redirect("/s?ok=fb");
+}
+
+// 学生：把“计划已更新”标为已读（供前端即时隐藏）
+export async function dismissPlanNoticeAction(fd: FormData): Promise<{ ok: boolean }> {
+  const me = await requireStudent();
+  const planId = str(fd, "planId");
+  const plan = await findPlanForStudent(planId, me.id);
+  if (!plan) return { ok: false };
+  await ackPlanNotice(planId, me.id);
+  return { ok: true };
+}
+
+// 教练：根据学生最近反馈 + 最新成绩，自动重建并微调计划
+export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+
+  const plans = await listPlans(studentId);
+  plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const plan = plans[0];
+  if (!plan) return errTo(`/students/${studentId}`, "还没有训练计划，请先点击上方生成一份");
+  if (plan.coachId !== user.id) return errTo(`/students/${studentId}`, "无权调整该学生的计划");
+
+  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number } };
+  const daysRaw = prev.meta?.daysPerWeek ?? 6;
+  const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
+
+  const goals = await listGoals(student.id);
+  const latest = await latestScoresByItem(student.id);
+  const goalMap: Record<EventKey, number | null> = { sprint: null, tripleJump: null, shotPut: null };
+  for (const g of goals) {
+    if (g.event in goalMap) (goalMap as Record<string, number | null>)[g.event] = g.target;
+  }
+  const req: PlanRequest = {
+    student: {
+      id: student.id,
+      name: student.name,
+      gender: student.gender === "female" ? "female" : "male",
+      weightKg: student.weight,
+      trainingYears: student.trainingYears,
+      examDate: student.examDate,
+      injuryNote: student.injuryNote,
+    },
+    latest,
+    goals: goalMap,
+    daysPerWeek,
+  };
+
+  const doc = buildPlanDoc(req, { daysPerWeek });
+  const trends = recentTrendLines(await listScores(student.id));
+  for (const t of trends) doc.meta.coachAdvice.push(t);
+
+  // 汇总最近训练反馈，作为“自动调整依据”写进计划
+  const fb = await listFeedbackByStudent(student.id, 40);
+  if (fb.length) {
+    const feels = fb.map((f) => f.feel).filter((x): x is number => x !== null);
+    const avg = feels.length ? (feels.reduce((a, b) => a + b, 0) / feels.length).toFixed(1) : null;
+    const sore = Array.from(new Set(fb.map((f) => f.soreness).filter((s): s is string => !!s && s !== "无"))).slice(0, 5).join("、");
+    const notes = fb.filter((f) => f.note).slice(0, 3).map((f) => f.note).join("；");
+    let line = "【根据学生训练反馈自动调整】近 " + fb.length + " 次反馈";
+    if (avg) line += "：平均训练感受 " + avg + "/5（1=很轻松，5=练不动）";
+    if (sore) line += "；反馈不适：" + sore;
+    doc.meta.coachAdvice.unshift(line);
+    if (notes) doc.meta.coachAdvice.unshift("学生反馈备注：" + notes);
+    if (Array.isArray(doc.meta.basis)) {
+      doc.meta.basis.unshift("本版已按学生近期反馈复核：若反馈疲劳或不适较多，先保证恢复/减量，再逐步加量。");
+    }
+  } else {
+    doc.meta.coachAdvice.unshift("【自动调整】暂未收到学生训练反馈，本版按最新成绩重新诊断生成。");
+  }
+
+  const wantLlm = str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY;
+  if (wantLlm) {
+    const enhanced = await enhanceWithLlm(doc);
+    if (enhanced) {
+      doc.meta.mode = enhanced.mode;
+      doc.meta.coachAdvice = enhanced.coachAdvice;
+      doc.meta.basis = enhanced.basis;
+    }
+  }
+
+  await updatePlanContent(plan.id, user.id, {
+    title: doc.meta.title,
+    status: "draft",
+    goalSummary: doc.meta.coachAdvice.join("\n"),
+    diagnosis: JSON.stringify(doc.diagnosis),
+    structure: JSON.stringify(doc),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true, by: "feedback" }),
+    startDate: localDateKey(),
+    examDate: student.examDate,
+  });
+  await bumpPlanNotice(plan.id, user.id);
+  redirect(`/students/${studentId}?ok=adjusted`);
+}
