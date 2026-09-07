@@ -421,6 +421,13 @@ export async function ackPlanNotice(planId: string, studentId: string): Promise<
 
 
 
+/** 教练补打卡后直接覆盖缺勤/封锁状态 */
+export async function setStudentAttendance(studentId: string, missedCount: number, locked: number): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE students SET missed_count=?, locked=?, updated_at=? WHERE id=?",
+    args: [Math.max(0, missedCount), locked ? 1 : 0, nowIso(), studentId],
+  });
+}
 // ================= 请假（学生申请 -> 教练批准，批准日不算缺勤） =================
 export type LeaveStatus = "pending" | "approved" | "rejected";
 export interface LeaveRow {
@@ -478,4 +485,5 @@ export async function updateLeaveStatusByCoach(id: string, status: LeaveStatus):
     args: [status, nowIso(), id],
   });
 }
+
 

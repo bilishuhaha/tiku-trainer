@@ -9,11 +9,12 @@ import { buildPlanDoc } from "./domain/plan";
 import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
+import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
   findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail, findUserById,
-  listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
+  listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAttendance, setStudentAccessCode, setStudentWeekdays,
   findLeave, unlockAttendance, updateLeaveStatusByCoach, updatePlan, updatePlanContent, updateStudent, updateUser,
 } from "./repo";
 
@@ -668,4 +669,27 @@ export async function approveLeaveAction(fd: FormData): Promise<void> {
 }
 export async function rejectLeaveAction(fd: FormData): Promise<void> {
   await reviewLeave(fd, "rejected");
+}
+
+// 教练：帮学生“补打卡/撤销未打卡”（仅限缺勤训练日）
+export async function coachMarkCheckinAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const date = str(fd, "date").trim();
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return errTo(`/students/${studentId}`, "日期无效");
+  const plans = await listPlans(studentId);
+  plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const plan = plans[0];
+  if (!plan) return errTo(`/students/${studentId}`, "该学生还没有训练计划");
+  const detail = await evaluateAttendanceDetail(student);
+  if (!detail.missedDates.some((x) => x.date === date)) {
+    return errTo(`/students/${studentId}`, "该日期不是缺勤训练日，无需补打卡");
+  }
+  await addCheckin(student.id, plan.id, date, 0);
+  const after = await evaluateAttendanceDetail(student);
+  const locked = after.missed >= LOCK_THRESHOLD ? 1 : 0;
+  await setStudentAttendance(student.id, after.missed, locked);
+  redirect(`/students/${studentId}?ok=coach-checkin`);
 }

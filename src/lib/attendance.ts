@@ -1,6 +1,6 @@
 // 考勤规则：按“计划训练日”计算连续未打卡次数，连续 3 次未打卡自动封锁，需教练解锁。
 import { findActivePlan, listApprovedLeaveDates, listCheckins, type StudentRow } from "./repo";
-import { dateKeyAdd, parseWeekdays, weekdayOf } from "./student-view";
+import { dateKeyAdd, parseWeekdays, weekdayOf, WEEKDAY_LETTERS } from "./student-view";
 import { localDateKey } from "./format";
 
 import { LOCK_THRESHOLD, MUST_READ } from "./attendance-shared";
@@ -65,3 +65,49 @@ export function warnText(missed: number): string {
 }
 
 
+
+/** 教练端用：最近 maxDays 内“缺勤的训练日”（无打卡且未批准请假），倒序 */
+export function listRecentMissedDates(
+  plan: PlanLike,
+  weekdaysCsv: string | null,
+  checkinDates: Set<string>,
+  approvedLeaveDates: Set<string>,
+  maxDays = 30,
+  today: Date = new Date(),
+): { date: string; label: string }[] {
+  const chosen = parseWeekdays(weekdaysCsv);
+  if (!chosen.length) return [];
+  const set = new Set(chosen);
+  const start = dateKeyAdd(localDateKey(today), -maxDays);
+  const todayKey = localDateKey(today);
+  const out: { date: string; label: string }[] = [];
+  let cursor = start;
+  let guard = 0;
+  while (cursor <= todayKey && guard < 500) {
+    const wd = weekdayOf(new Date(cursor + "T00:00:00"));
+    if (set.has(wd) && !checkinDates.has(cursor) && !approvedLeaveDates.has(cursor)) {
+      out.push({ date: cursor, label: "周" + (WEEKDAY_LETTERS[wd - 1] ?? "") });
+    }
+    cursor = dateKeyAdd(cursor, 1);
+    guard++;
+  }
+  return out.reverse();
+}
+
+/** 教练端详情：考勤状态 + 最近缺勤日列表 */
+export async function evaluateAttendanceDetail(
+  student: Pick<StudentRow, "id" | "weekdays" | "locked">,
+): Promise<AttendanceState & { missedDates: { date: string; label: string }[] }> {
+  const plan = await findActivePlan(student.id);
+  if (!plan) return { missed: 0, locked: false, missedDates: [] };
+  const [checkins, approved] = await Promise.all([
+    listCheckins(plan.id),
+    listApprovedLeaveDates(student.id),
+  ]);
+  const chk = new Set(checkins.map((c) => c.date));
+  const appr = new Set(approved);
+  const missed = computeMissed(plan, student.weekdays, chk, appr);
+  const locked = missed >= LOCK_THRESHOLD || Number(student.locked) === 1;
+  const missedDates = listRecentMissedDates(plan, student.weekdays, chk, appr);
+  return { missed, locked, missedDates };
+}

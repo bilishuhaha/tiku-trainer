@@ -7,10 +7,10 @@ import { findStudent, listFeedbackByStudent, listGoals, listLeavesByStudent, lis
 import { ConfirmForm } from "@/components/forms";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner } from "@/components/error-banner";
-import { adjustPlanFromFeedbackAction, approveLeaveAction, clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, rejectLeaveAction, setGoalAction, addScoreAction, unlockStudentAction } from "@/lib/actions";
+import { adjustPlanFromFeedbackAction, approveLeaveAction, clearAccessCodeAction, coachMarkCheckinAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, rejectLeaveAction, setGoalAction, addScoreAction, unlockStudentAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
 import { calcAge, fmtDate, todayInputValue, weeksUntil, round1, round2 } from "@/lib/format";
-import { evaluateAttendance } from "@/lib/attendance";
+import { evaluateAttendanceDetail } from "@/lib/attendance";
 import { LOCK_THRESHOLD } from "@/lib/attendance-shared";
 
 export const metadata = { title: "学生档案" };
@@ -25,10 +25,12 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   // 考勤状态（仅正式学生：实时按最新计划计算并回写，供列表/教练端显示）
   let attLocked = Number(student.locked) === 1;
   let attMissed = Number(student.missedCount);
+  let attMissedDates: { date: string; label: string }[] = [];
   if (student.pending !== 1) {
-    const att = await evaluateAttendance(student);
+    const att = await evaluateAttendanceDetail(student);
     attMissed = att.missed;
     attLocked = att.locked;
+    attMissedDates = att.missedDates;
     if (attMissed !== Number(student.missedCount) || (attLocked ? 1 : 0) !== Number(student.locked)) {
       await syncAttendance(id, attMissed, attLocked ? 1 : 0);
     }
@@ -98,6 +100,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       {ok === "unlocked" && <OkNote text="已解锁 ✅ 该生可正常登录学生端继续训练。" />}
       {ok === "leave-approved" && <OkNote text="已批准请假 ✅ 该日不算缺勤。" />}
       {ok === "leave-rejected" && <OkNote text="已拒绝该请假（仍算训练日，请提醒学生打卡）。" />}
+      {ok === "coach-checkin" && <OkNote text="已为该生补打卡，撤销该天缺勤 ✅" />}
       {ok === "adjusted" && <OkNote text="已根据学生最新反馈自动更新计划（已回到草稿）。学生端会收到“计划已更新”提示；请到计划页核对后重新确认。" />}
 
       {student.injuryNote && (
@@ -126,6 +129,25 @@ export default async function StudentDetailPage({ params, searchParams }: { para
           <p className="mt-2 text-xs leading-relaxed text-slate-500">
 {attLocked ? `该生已连续 ${LOCK_THRESHOLD} 次训练未打卡，系统已自动封锁学生端。解锁后学生可重新查看计划并继续训练。` : attMissed > 0 ? `该生已有 ${attMissed} 次训练未打卡（连续 ${LOCK_THRESHOLD} 次会自动封锁），请留意并提醒。` : `考勤正常。连续 ${LOCK_THRESHOLD} 次训练未打卡会自动封锁学生端，届时你可在这里一键解锁。`}
           </p>
+          {attMissedDates.length > 0 && (
+            <div className="mt-3 rounded-xl border border-amber-100 bg-amber-50/50 p-3">
+              <div className="text-xs font-medium text-slate-600">最近缺勤的训练日（可帮学生“补打卡”撤销缺勤）</div>
+              <ul className="mt-1.5 space-y-1">
+                {attMissedDates.slice(0, 6).map((d) => (
+                  <li key={d.date} className="flex flex-wrap items-center justify-between gap-2 text-xs text-slate-600">
+                    <span>{fmtDate(d.date)}（{d.label}）</span>
+                    <form action={coachMarkCheckinAction}>
+                      <input type="hidden" name="studentId" value={id} />
+                      <input type="hidden" name="date" value={d.date} />
+                      <PendingSubmitButton pendingText="…" className="btn bg-emerald-600 px-2.5 py-1 text-[11px] text-white hover:bg-emerald-700">补打卡</PendingSubmitButton>
+                    </form>
+                  </li>
+                ))}
+              </ul>
+              <p className="mt-1.5 text-[11px] text-slate-400">说明：确认当天学生其实练了，点“补打卡”即可撤销该天缺勤；缺勤低于 {LOCK_THRESHOLD} 次会自动解除封锁。</p>
+            </div>
+          )}
+
           {attLocked && (
             <form action={unlockStudentAction} className="mt-3">
               <input type="hidden" name="id" value={id} />
@@ -568,3 +590,4 @@ function LeaveSection({ leaves }: { leaves: { id: string; date: string; status: 
     </div>
   );
 }
+
