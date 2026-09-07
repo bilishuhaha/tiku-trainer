@@ -12,14 +12,16 @@ export default function PendingSubmitButton({
   children,
   pendingText,
   className = "btn btn-primary",
+  title,
 }: {
   children: React.ReactNode;
   pendingText: string;
   className?: string;
+  title?: string;
 }) {
   const { pending } = useFormStatus();
   return (
-    <button type="submit" disabled={pending} className={className} aria-busy={pending}>
+    <button type="submit" disabled={pending} className={className} aria-busy={pending} title={title}>
       {pending ? (
         <span className="inline-flex items-center gap-1.5">
           <Loader2 className="h-4 w-4 animate-spin" /> {pendingText}
@@ -30,3 +32,4 @@ export default function PendingSubmitButton({
     </button>
   );
 }
+

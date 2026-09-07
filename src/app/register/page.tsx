@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Dumbbell, ArrowLeft } from "lucide-react";
 import { registerAction } from "@/lib/actions";
 import { ErrorBanner } from "@/components/error-banner";
+import PendingSubmitButton from "@/components/pending-submit-button";
 
 export const metadata: Metadata = { title: "教练注册" };
 
@@ -46,7 +47,7 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
                 <input id="invite" name="invite" required className="input" placeholder="请输入邀请码" />
               </div>
             )}
-            <button type="submit" className="btn btn-primary w-full">注册并登录</button>
+            <PendingSubmitButton className="btn btn-primary w-full" pendingText="登录中…">注册并登录</PendingSubmitButton>
           </form>
           <div className="mt-4 text-center text-sm">
             <Link href="/login" className="inline-flex items-center gap-1 text-slate-500 hover:text-slate-700">
@@ -58,3 +59,4 @@ export default async function RegisterPage({ searchParams }: { searchParams: Pro
     </main>
   );
 }
+

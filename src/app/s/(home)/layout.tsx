@@ -2,6 +2,7 @@ import Link from "next/link";
 import { LogOut } from "lucide-react";
 import { requireStudent } from "@/lib/auth";
 import { studentLogoutAction } from "@/lib/actions";
+import PendingSubmitButton from "@/components/pending-submit-button";
 
 export default async function StudentHomeLayout({ children }: { children: React.ReactNode }) {
   const me = await requireStudent();
@@ -13,9 +14,9 @@ export default async function StudentHomeLayout({ children }: { children: React.
           <div className="flex items-center gap-2 text-sm">
             <span className="text-slate-500">{me.name}</span>
             <form action={studentLogoutAction}>
-              <button type="submit" className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-rose-600" title="退出">
+              <PendingSubmitButton className="flex items-center gap-1 rounded-lg px-2 py-1 text-slate-500 hover:bg-slate-100 hover:text-rose-600" title="退出" pendingText="处理中…">
                 <LogOut className="h-4 w-4" />
-              </button>
+              </PendingSubmitButton>
             </form>
           </div>
         </div>

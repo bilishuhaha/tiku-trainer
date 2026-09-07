@@ -54,7 +54,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
           )}
           <ConfirmForm action={deletePlanAction} message="删除这份训练计划？">
             <input type="hidden" name="id" value={id} />
-            <button type="submit" className="btn btn-ghost text-rose-600 hover:bg-rose-50"><Trash2 className="h-4 w-4" /> 删除</button>
+            <PendingSubmitButton className="btn btn-ghost text-rose-600 hover:bg-rose-50" pendingText="删除中…"><Trash2 className="h-4 w-4" /> 删除</PendingSubmitButton>
           </ConfirmForm>
         </div>
       </div>
@@ -84,7 +84,7 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
           <form action={updatePlanNoteAction}>
             <input type="hidden" name="id" value={id} />
             <textarea name="coachNote" rows={3} defaultValue={plan.coachNote ?? ""} className="input" placeholder="如：周三力量课与文化课冲突，改到周日补；该生踝关节旧伤，跳跃组数减半…" />
-            <button type="submit" className="btn btn-outline mt-2">保存备注</button>
+            <PendingSubmitButton className="btn btn-outline mt-2" pendingText="处理中…">保存备注</PendingSubmitButton>
           </form>
         </div>
       </div>

@@ -4,6 +4,7 @@ import { Dumbbell, Target, CalendarRange, Smartphone, FileText, ShieldCheck, Inf
 import { loginAction } from "@/lib/actions";
 import { ErrorBanner } from "@/components/error-banner";
 import AddToHome from "@/components/add-to-home";
+import PendingSubmitButton from "@/components/pending-submit-button";
 
 export const metadata: Metadata = { title: "登录" };
 
@@ -133,13 +134,10 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
                 />
               </div>
             </div>
-            <button
-              type="submit"
-              className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-emerald-500 hover:to-teal-500"
-            >
+            <PendingSubmitButton className="group flex w-full items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-emerald-600 to-teal-600 py-3 text-sm font-semibold text-white shadow-lg shadow-emerald-600/20 transition hover:from-emerald-500 hover:to-teal-500" pendingText="登录中…">
               登 录
               <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-            </button>
+            </PendingSubmitButton>
           </form>
 
           <div className="mt-4 flex items-center justify-between text-xs">
@@ -181,4 +179,5 @@ export default async function LoginPage({ searchParams }: { searchParams: Promis
     </main>
   );
 }
+
 

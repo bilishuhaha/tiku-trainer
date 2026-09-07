@@ -3,6 +3,7 @@ import { UserCog, KeyRound, AtSign } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { changePasswordAction, updateProfileAction } from "@/lib/actions";
 import { ErrorBanner, OkBanner } from "@/components/error-banner";
+import PendingSubmitButton from "@/components/pending-submit-button";
 
 export const metadata: Metadata = { title: "账号设置" };
 
@@ -40,7 +41,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         </div>
         <form action={updateProfileAction}>
           <input name="name" required maxLength={20} defaultValue={user.name} className="input" />
-          <button type="submit" className="btn btn-primary mt-3">保存昵称</button>
+          <PendingSubmitButton className="btn btn-primary mt-3" pendingText="处理中…">保存昵称</PendingSubmitButton>
         </form>
       </div>
 
@@ -64,7 +65,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
               <input name="confirm" type="password" required minLength={6} autoComplete="new-password" className="input" />
             </div>
           </div>
-          <button type="submit" className="btn btn-dark">更新密码</button>
+          <PendingSubmitButton className="btn btn-dark" pendingText="处理中…">更新密码</PendingSubmitButton>
         </form>
       </div>
     </div>

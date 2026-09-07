@@ -69,9 +69,9 @@ export default async function StudentDetailPage({ params, searchParams }: { para
           </Link>
           <ConfirmForm action={deleteStudentAction} message={`确定删除学生「${student.name}」？其成绩与计划将一并删除，不可恢复。`}>
             <input type="hidden" name="id" value={id} />
-            <button type="submit" className="btn btn-ghost text-rose-600 hover:bg-rose-50">
+            <PendingSubmitButton className="btn btn-ghost text-rose-600 hover:bg-rose-50" pendingText="删除中…">
               <Trash2 className="h-4 w-4" /> 删除
-            </button>
+            </PendingSubmitButton>
           </ConfirmForm>
         </div>
       </div>
@@ -114,11 +114,11 @@ export default async function StudentDetailPage({ params, searchParams }: { para
             <div className="mt-3 flex flex-wrap gap-2">
               <form action={generateAccessCodeAction}>
                 <input type="hidden" name="studentId" value={id} />
-                <button type="submit" className="btn btn-outline text-xs"><KeyRound className="h-3.5 w-3.5" /> 重置访问码</button>
+                <PendingSubmitButton className="btn btn-outline text-xs" pendingText="生成访问码中…"><KeyRound className="h-3.5 w-3.5" /> 重置访问码</PendingSubmitButton>
               </form>
               <form action={clearAccessCodeAction}>
                 <input type="hidden" name="studentId" value={id} />
-                <button type="submit" className="btn btn-ghost text-xs text-rose-600 hover:bg-rose-50"><XCircle className="h-3.5 w-3.5" /> 关闭学生访问</button>
+                <PendingSubmitButton className="btn btn-ghost text-xs text-rose-600 hover:bg-rose-50" pendingText="处理中…"><XCircle className="h-3.5 w-3.5" /> 关闭学生访问</PendingSubmitButton>
               </form>
             </div>
           </div>
@@ -127,7 +127,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
             <p className="text-sm text-slate-500">适合“没人盯着练”的学生：给他一个访问码，他自己登录就能看到每天练什么、做完打卡。</p>
             <form action={generateAccessCodeAction} className="mt-3">
               <input type="hidden" name="studentId" value={id} />
-              <button type="submit" className="btn btn-primary text-xs"><KeyRound className="h-3.5 w-3.5" /> 生成访问码，开通学生个人版</button>
+              <PendingSubmitButton className="btn btn-primary text-xs" pendingText="生成访问码中…"><KeyRound className="h-3.5 w-3.5" /> 生成访问码，开通学生个人版</PendingSubmitButton>
             </form>
           </div>
         )}
@@ -166,7 +166,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
                     <div className="min-w-24 flex-1">
                       <input name="goalNote" defaultValue="" placeholder="备注（可选）" className="input" />
                     </div>
-                    <button type="submit" className="btn btn-outline text-xs">保存目标</button>
+                    <PendingSubmitButton className="btn btn-outline text-xs" pendingText="处理中…">保存目标</PendingSubmitButton>
                   </form>
                 </div>
               );
@@ -211,7 +211,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
                 <input name="note" className="input" placeholder="手计时/顺风等（可选）" />
               </div>
             </div>
-            <button type="submit" className="btn btn-primary">添加记录</button>
+            <PendingSubmitButton className="btn btn-primary" pendingText="处理中…">添加记录</PendingSubmitButton>
           </form>
         </div>
       </div>
@@ -284,7 +284,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
                       <ConfirmForm action={deleteScoreAction} message="删除这条成绩记录？">
                         <input type="hidden" name="id" value={s.id} />
                         <input type="hidden" name="studentId" value={id} />
-                        <button type="submit" className="text-xs text-slate-400 hover:text-rose-600">删除</button>
+                        <PendingSubmitButton className="text-xs text-slate-400 hover:text-rose-600" pendingText="删除中…">删除</PendingSubmitButton>
                       </ConfirmForm>
                     </td>
                   </tr>

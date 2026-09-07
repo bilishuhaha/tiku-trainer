@@ -207,7 +207,7 @@ function WeekdayPicker({ k, preset }: { k: number; preset: number[] }) {
             );
           })}
         </div>
-        <button type="submit" className="btn btn-dark mt-4 w-full">保存我的训练日</button>
+        <PendingSubmitButton className="btn btn-dark mt-4 w-full" pendingText="保存中…">保存我的训练日</PendingSubmitButton>
       </form>
       <p className="mt-2 text-center text-xs text-slate-400">之后想改，随时可以回来调整</p>
     </div>

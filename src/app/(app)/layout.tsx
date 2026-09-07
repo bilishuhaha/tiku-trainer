@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Dumbbell, LayoutDashboard, Users, LogOut, Settings as SettingsIcon } from "lucide-react";
 import { requireUser } from "@/lib/auth";
 import { logoutAction } from "@/lib/actions";
+import PendingSubmitButton from "@/components/pending-submit-button";
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
@@ -30,10 +31,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             <span className="mx-1 hidden text-slate-300 sm:inline">|</span>
             <span className="hidden px-1 text-slate-500 sm:inline">{user.name}</span>
             <form action={logoutAction}>
-              <button type="submit" className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-rose-600" title="退出登录">
+              <PendingSubmitButton className="flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-slate-600 hover:bg-slate-100 hover:text-rose-600" title="退出登录" pendingText="处理中…">
                 <LogOut className="h-4 w-4" />
                 <span className="hidden sm:inline">退出</span>
-              </button>
+              </PendingSubmitButton>
             </form>
           </nav>
         </div>

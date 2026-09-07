@@ -77,7 +77,7 @@ export default async function PendingReviewPage({ params }: { params: Promise<{ 
         </form>
         <ConfirmForm action={deleteStudentAction} message={`确定拒绝/删除「${student.name}」这条报名？其成绩记录也会一并删除。`}>
           <input type="hidden" name="id" value={student.id} />
-          <button type="submit" className="btn btn-ghost text-rose-600 hover:bg-rose-50"><XCircle className="h-4 w-4" /> 拒绝删除</button>
+          <PendingSubmitButton className="btn btn-ghost text-rose-600 hover:bg-rose-50" pendingText="删除中…"><XCircle className="h-4 w-4" /> 拒绝删除</PendingSubmitButton>
         </ConfirmForm>
       </div>
       <p className="text-xs text-slate-400">确认后如需修改（姓名、成绩等），可在学生档案里编辑。</p>
