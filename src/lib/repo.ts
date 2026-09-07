@@ -7,6 +7,7 @@ export interface StudentRow {
   birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null;
   injuryNote: string | null; note: string | null; accessCode: string | null; weekdays: string | null;
+  contact: string | null; pending: number;
   createdAt: string; updatedAt: string;
 }
 export interface GoalRow { id: string; studentId: string; event: string; target: number; note: string | null; }
@@ -29,6 +30,7 @@ function mapStudent(r: Row): StudentRow {
     trainingYears: (r.training_years as number) ?? null, examDate: (r.exam_date as string) ?? null,
     goalNote: (r.goal_note as string) ?? null, injuryNote: (r.injury_note as string) ?? null, note: (r.note as string) ?? null,
     accessCode: (r.access_code as string) ?? null, weekdays: (r.weekdays as string) ?? null,
+    contact: (r.contact as string) ?? null, pending: Number(r.pending ?? 0),
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -69,7 +71,7 @@ export async function createUser(email: string, passwordHash: string, name: stri
 
 // ---------- students ----------
 export async function listStudents(coachId: string): Promise<StudentRow[]> {
-  const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE coach_id = ? ORDER BY exam_date IS NULL, exam_date ASC, name ASC", args: [coachId] });
+  const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE coach_id = ? AND (pending IS NULL OR pending = 0) ORDER BY exam_date IS NULL, exam_date ASC, name ASC", args: [coachId] });
   return rs.rows.map((r) => mapStudent(r as Row));
 }
 /** 每个学生已生成计划的数量（一次查询，避免学生列表 N+1 慢查询） */
@@ -99,6 +101,38 @@ export async function createStudent(coachId: string, input: StudentInput): Promi
     args: [id, coachId, input.name, input.gender, input.birthDate, input.height, input.weight, input.trainingYears, input.examDate, input.goalNote, input.injuryNote, input.note, t, t],
   });
   return (await findStudent(id, coachId))!;
+}
+/** 新生通过“身体评估报名”自助提交：直接落库为待确认(pending=1)，成绩由 actions 另存 */
+export async function createEnrolledStudent(coachId: string, input: {
+  name: string; gender: string; birthDate: string | null; height: number | null; weight: number | null;
+  trainingYears: number | null; examDate: string | null; goalNote: string | null; injuryNote: string | null;
+  note: string | null; contact: string | null;
+}): Promise<StudentRow> {
+  const id = randomUUID();
+  const t = nowIso();
+  await getDb().execute({
+    sql: `INSERT INTO students (id, coach_id, name, gender, birth_date, height, weight, training_years, exam_date, goal_note, injury_note, note, contact, pending, created_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+    args: [id, coachId, input.name, input.gender, input.birthDate, input.height, input.weight, input.trainingYears, input.examDate, input.goalNote, input.injuryNote, input.note, input.contact, t, t],
+  });
+  return (await findStudent(id, coachId))!;
+}
+
+/** 待确认新生列表 */
+export async function listPendingStudents(coachId: string): Promise<StudentRow[]> {
+  const rs = await getDb().execute({
+    sql: "SELECT * FROM students WHERE coach_id=? AND (pending IS NOT NULL AND pending = 1) ORDER BY created_at DESC",
+    args: [coachId],
+  });
+  return rs.rows.map((r) => mapStudent(r as Row));
+}
+
+/** 教练确认新生入库 */
+export async function confirmStudentPending(id: string, coachId: string): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE students SET pending=0, updated_at=? WHERE id=? AND coach_id=?",
+    args: [nowIso(), id, coachId],
+  });
 }
 export async function updateStudent(id: string, coachId: string, input: StudentInput): Promise<StudentRow | null> {
   await getDb().execute({
@@ -359,4 +393,6 @@ export async function ackPlanNotice(planId: string, studentId: string): Promise<
     args: [planId, studentId],
   });
 }
+
+
 

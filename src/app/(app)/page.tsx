@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Users, CalendarClock, AlertTriangle, ClipboardList, ArrowRight, Plus, Printer } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { listStudents, countPlansByCoach } from "@/lib/repo";
+import { listStudents, listPendingStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 import { ConfirmForm } from "@/components/forms";
 import ScoreCalculator from "@/components/score-calculator";
@@ -12,8 +12,9 @@ export const metadata = { title: "仪表盘" };
 export default async function DashboardPage() {
   const user = await requireUser();
   // 并行查询学生与计划统计，减少跨区网络下的主页等待
-  const [students, planCountMap] = await Promise.all([
+  const [students, pending, planCountMap] = await Promise.all([
     listStudents(user.id),
+    listPendingStudents(user.id),
     countPlansByCoach(user.id),
   ]);
 
@@ -31,6 +32,11 @@ export default async function DashboardPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-900">教练工作台</h1>
           <p className="text-sm text-slate-500">你好，{user.name}。科学周期化训练，从数据开始。</p>
+          {pending.length > 0 && (
+            <Link href="/students/pending" className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200">
+              🔔 {pending.length} 位新生待确认
+            </Link>
+          )}
         </div>
         <Link href="/students/new" className="btn btn-primary">
           <Plus className="h-4 w-4" /> 添加学生
@@ -147,6 +153,7 @@ function EmptyState() {
     </div>
   );
 }
+
 
 
 

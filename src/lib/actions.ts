@@ -10,9 +10,9 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import {
-  ackPlanNotice, addCheckin, addScore, bumpPlanNotice, createFeedback, createPlan, createStudent, createUser,
+  ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
-  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail,
+  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail, findUserById,
   listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
   updatePlan, updatePlanContent, updateStudent, updateUser,
 } from "./repo";
@@ -560,3 +560,69 @@ export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> 
   await bumpPlanNotice(plan.id, user.id);
   redirect(`/students/${studentId}?ok=adjusted`);
 }
+
+
+// ================= 新生自助报名（身体评估表 -> 教练待确认） =================
+
+// 报名表里可填的“当前成绩”项（会按对应项目自动入档）
+const ENROLL_ITEMS = ["sprint30", "sprint60", "sprint100", "tripleJump", "standingLongJump", "shotPut"] as const;
+
+function numOrEmpty(s: string): number | null {
+  const raw = s.trim();
+  if (raw === "") return null;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+export async function submitEnrollAction(fd: FormData): Promise<void> {
+  const coachId = str(fd, "coach").trim();
+  const coach = coachId ? await findUserById(coachId) : null;
+  if (!coach || coach.role !== "coach") {
+    return redirect("/s/join?error=" + encodeURIComponent("报名链接无效，请向教练重新索取"));
+  }
+  const back = (msg: string) => redirect(`/s/join?c=${encodeURIComponent(coachId)}&error=${encodeURIComponent(msg)}`);
+
+  const name = str(fd, "name").trim();
+  if (!name) return back("请填写姓名");
+  const gender = str(fd, "gender");
+  if (gender !== "male" && gender !== "female") return back("请选择性别");
+
+  const birthDate = str(fd, "birthDate").trim() || null;
+  if (birthDate && !/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) return back("出生日期格式不正确");
+  const height = numOrEmpty(str(fd, "height"));
+  const weight = numOrEmpty(str(fd, "weight"));
+  const trainingYears = numOrEmpty(str(fd, "trainingYears"));
+  const examDate = str(fd, "examDate").trim() || null;
+  if (examDate && !/^\d{4}-\d{2}-\d{2}$/.test(examDate)) return back("考试日期格式不正确");
+  const goalNote = str(fd, "goalNote").trim().slice(0, 120) || null;
+  const injuryNote = str(fd, "injuryNote").trim().slice(0, 300) || null;
+  const note = str(fd, "note").trim().slice(0, 300) || null;
+  const contact = str(fd, "contact").trim().slice(0, 60) || null;
+
+  const student = await createEnrolledStudent(coachId, {
+    name, gender, birthDate, height, weight, trainingYears, examDate,
+    goalNote, injuryNote, note, contact,
+  });
+
+  // 自动把“当前成绩”按项目入档（标记为新生自报，便于教练识别）
+  const today = localDateKey();
+  for (const item of ENROLL_ITEMS) {
+    const v = numOrEmpty(str(fd, item));
+    if (v !== null) {
+      await addScore(student.id, today, item, v, "新生评估自报");
+    }
+  }
+  redirect("/s/join?done=1");
+}
+
+// 教练：确认待确认新生入库
+export async function confirmPendingAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = str(fd, "id");
+  const student = await findStudent(id, user.id);
+  if (!student) return errTo("/students/pending", "该新生不存在或不属于你");
+  if (student.pending !== 1) return errTo("/students/pending", "该学生已不是待确认状态");
+  await confirmStudentPending(id, user.id);
+  redirect(`/students/${id}?ok=confirmed`);
+}
+
