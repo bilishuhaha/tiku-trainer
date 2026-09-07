@@ -9,6 +9,7 @@ import CheckinControl from "@/components/student-checkin";
 import AttendanceWarnModal from "@/components/attendance-warn";
 import PlanUpdatedBanner from "@/components/plan-updated-banner";
 import PendingSubmitButton from "@/components/pending-submit-button";
+import ScoreCalculator from "@/components/score-calculator";
 import { EVENTS, EVENT_ORDER, itemUnit } from "@/lib/domain/items";
 import type { PlanDoc, DayDoc, BlockDoc } from "@/lib/domain/types";
 import { localDateKey, weeksUntil } from "@/lib/format";
@@ -95,6 +96,9 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
           ⚠️ 注意：{student.injuryNote}
         </div>
       )}
+
+      {/* 广东术科算分器（学生自测） */}
+      <ScoreCalculator />
 
       {!plan ? (
         <NoPlanCard />
@@ -515,3 +519,4 @@ function LeaveCard({ recent }: { recent: { date: string; status: string; reason:
     </div>
   );
 }
+
