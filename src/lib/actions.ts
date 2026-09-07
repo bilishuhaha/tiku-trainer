@@ -10,11 +10,11 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import {
-  ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createPlan, createStudent, createUser,
+  ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
   findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail, findUserById,
   listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
-  unlockAttendance, updatePlan, updatePlanContent, updateStudent, updateUser,
+  findLeave, unlockAttendance, updateLeaveStatusByCoach, updatePlan, updatePlanContent, updateStudent, updateUser,
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";
@@ -640,3 +640,32 @@ export async function unlockStudentAction(fd: FormData): Promise<void> {
 }
 
 
+
+// ================= 请假（学生申请 -> 教练批准，不算缺勤） =================
+export async function studentLeaveAction(fd: FormData): Promise<void> {
+  const me = await requireStudent();
+  const plan = await findActivePlan(me.id);
+  if (!plan) return redirect("/s?error=" + encodeURIComponent("还没有训练计划，暂时不需要请假"));
+  const date = str(fd, "date").trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return redirect("/s?error=" + encodeURIComponent("请选择请假日期"));
+  const reason = str(fd, "reason").trim().slice(0, 200) || "未填写原因";
+  await createLeave(me.id, date, reason);
+  redirect("/s?ok=leave");
+}
+
+async function reviewLeave(fd: FormData, status: "approved" | "rejected"): Promise<void> {
+  const user = await requireUser();
+  const leave = await findLeave(str(fd, "id"));
+  if (!leave) return errTo("/students", "请假记录不存在");
+  const student = await findStudent(leave.studentId, user.id);
+  if (!student) return errTo("/students", "无权处理该学生的请假");
+  await updateLeaveStatusByCoach(leave.id, status);
+  redirect(`/students/${leave.studentId}?ok=leave-${status}`);
+}
+
+export async function approveLeaveAction(fd: FormData): Promise<void> {
+  await reviewLeave(fd, "approved");
+}
+export async function rejectLeaveAction(fd: FormData): Promise<void> {
+  await reviewLeave(fd, "rejected");
+}

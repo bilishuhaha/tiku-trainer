@@ -2,8 +2,8 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown, MessageSquare, Lock } from "lucide-react";
 import { requireStudent } from "@/lib/auth";
-import { findActivePlan, findStudentById, listCheckins, listFeedbackByStudent, listGoals, syncAttendance } from "@/lib/repo";
-import { setMyWeekdaysAction, submitFeedbackAction } from "@/lib/actions";
+import { findActivePlan, findStudentById, listApprovedLeaveDates, listCheckins, listFeedbackByStudent, listGoals, listLeavesByStudent, syncAttendance } from "@/lib/repo";
+import { setMyWeekdaysAction, studentLeaveAction, submitFeedbackAction } from "@/lib/actions";
 import { ErrorBanner, OkBanner } from "@/components/error-banner";
 import CheckinControl from "@/components/student-checkin";
 import AttendanceWarnModal from "@/components/attendance-warn";
@@ -23,11 +23,13 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   const { error, ok } = await searchParams;
   const me = await requireStudent();
   // 并行查询：减少跨区网络下“点开页面”的等待
-  const [student, plan, goals, feedback] = await Promise.all([
+  const [student, plan, goals, feedback, approvedLeaveDates, leaves] = await Promise.all([
     findStudentById(me.id),
     findActivePlan(me.id),
     listGoals(me.id),
     listFeedbackByStudent(me.id, 6),
+    listApprovedLeaveDates(me.id),
+    listLeavesByStudent(me.id, 6),
   ]);
   if (!student) redirect("/s/login");
 
@@ -41,7 +43,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   let locked = Number(student.locked) === 1;
   if (plan && parseWeekdays(student.weekdays).length > 0) {
     const chk = await listCheckins(plan.id);
-    missed = computeMissed(plan, student.weekdays, new Set(chk.map((x) => x.date)));
+    missed = computeMissed(plan, student.weekdays, new Set(chk.map((x) => x.date)), new Set(approvedLeaveDates));
     locked = missed >= LOCK_THRESHOLD || Number(student.locked) === 1;
     if (missed !== Number(student.missedCount) || (locked ? 1 : 0) !== Number(student.locked)) {
       await syncAttendance(student.id, missed, locked ? 1 : 0);
@@ -54,7 +56,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-4">
       <ErrorBanner error={error} />
-      <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : null} />
+      <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : null} />
 
 
       {/* 缺勤警告弹窗（第 1/2 次） */}
@@ -103,6 +105,11 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
       {/* 训练反馈 */}
       {plan && (
         <FeedbackCard recent={feedback} />
+      )}
+
+      {/* 请假/告知教练 */}
+      {plan && (
+        <LeaveCard recent={leaves} />
       )}
 
       <p className="pb-6 pt-2 text-center text-[11px] text-slate-400">
@@ -455,6 +462,56 @@ function LockedPanel({ name }: { name: string }) {
         如有需要，请联系教练帮你开锁。
       </p>
       <p className="mt-4 text-xs text-slate-400">封锁期间无法查看训练安排；教练解锁后才能继续。</p>
+    </div>
+  );
+}
+
+
+
+const LEAVE_STATUS_LABEL: Record<string, { label: string; cls: string }> = {
+  pending: { label: "待教练批准", cls: "bg-amber-100 text-amber-700" },
+  approved: { label: "已批准 · 不算缺勤", cls: "bg-emerald-100 text-emerald-700" },
+  rejected: { label: "未通过", cls: "bg-slate-100 text-slate-500" },
+};
+
+function LeaveCard({ recent }: { recent: { date: string; status: string; reason: string | null }[] }) {
+  return (
+    <div className="card p-5">
+      <div className="mb-1 flex items-center gap-2">
+        <CalendarDays className="h-5 w-5 text-sky-600" />
+        <h2 className="font-semibold text-slate-900">请假 / 提前告知教练</h2>
+      </div>
+      <p className="mb-3 text-xs text-slate-500">当天要请假（受伤、考试、有事）？提前提交，教练批准后那天<b>不算缺勤</b>。</p>
+      <form action={studentLeaveAction} className="space-y-2">
+        <div className="grid grid-cols-2 gap-2">
+          <div>
+            <label className="label" htmlFor="leave-date">请假日期</label>
+            <input id="leave-date" name="date" type="date" required className="input" defaultValue={localDateKey(new Date())} />
+          </div>
+          <div>
+            <label className="label" htmlFor="leave-reason">原因</label>
+            <input id="leave-reason" name="reason" maxLength={200} className="input" placeholder="如：学校考试 / 感冒" />
+          </div>
+        </div>
+        <PendingSubmitButton pendingText="提交中…" className="btn w-full bg-sky-600 py-2.5 text-white hover:bg-sky-700">提交请假</PendingSubmitButton>
+      </form>
+
+      {recent.length > 0 && (
+        <div className="mt-3 border-t border-slate-100 pt-3">
+          <div className="mb-1.5 text-xs font-medium text-slate-500">我最近请假的记录</div>
+          <ul className="space-y-1">
+            {recent.slice(0, 5).map((x) => (
+              <li key={x.date} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-slate-600">
+                <span className="font-medium text-slate-400">{x.date}</span>
+                <span className={`rounded-full px-2 py-0.5 ${(LEAVE_STATUS_LABEL[x.status] ?? LEAVE_STATUS_LABEL.pending).cls}`}>
+                  {(LEAVE_STATUS_LABEL[x.status] ?? LEAVE_STATUS_LABEL.pending).label}
+                </span>
+                {x.reason && x.reason !== "未填写原因" ? <span className="min-w-0 flex-1 truncate">{x.reason}</span> : null}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }

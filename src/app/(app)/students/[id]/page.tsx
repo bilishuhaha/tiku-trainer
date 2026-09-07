@@ -3,14 +3,15 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock, Smartphone, KeyRound, XCircle, MessageSquare, RefreshCcw, Lock, Unlock } from "lucide-react";
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
-import { findStudent, listFeedbackByStudent, listGoals, listScores, latestScoresByItem, listPlans, syncAttendance } from "@/lib/repo";
+import { findStudent, listFeedbackByStudent, listGoals, listLeavesByStudent, listScores, latestScoresByItem, listPlans, syncAttendance } from "@/lib/repo";
 import { ConfirmForm } from "@/components/forms";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner } from "@/components/error-banner";
-import { adjustPlanFromFeedbackAction, clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction, unlockStudentAction } from "@/lib/actions";
+import { adjustPlanFromFeedbackAction, approveLeaveAction, clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, rejectLeaveAction, setGoalAction, addScoreAction, unlockStudentAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
 import { calcAge, fmtDate, todayInputValue, weeksUntil, round1, round2 } from "@/lib/format";
 import { evaluateAttendance } from "@/lib/attendance";
+import { LOCK_THRESHOLD } from "@/lib/attendance-shared";
 
 export const metadata = { title: "学生档案" };
 
@@ -33,13 +34,14 @@ export default async function StudentDetailPage({ params, searchParams }: { para
     }
   }
 
-  // 并行查询目标/成绩/计划/反馈，减少跨区网络下点开学生档案的等待
-  const [goals, scores, latest, plans, feedback] = await Promise.all([
+  // 并行查询目标/成绩/计划/反馈/请假，减少跨区网络下点开学生档案的等待
+  const [goals, scores, latest, feedback, leaves, plans] = await Promise.all([
     listGoals(id),
     listScores(id),
     latestScoresByItem(id),
-    listPlans(id),
     listFeedbackByStudent(id, 20),
+    listLeavesByStudent(id, 30),
+    listPlans(id),
   ]);
   const goalMap: Record<string, number | null> = {};
   for (const g of goals) goalMap[g.event] = g.target;
@@ -94,6 +96,8 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       {ok === "access" && <OkNote text="访问码已生成：请把访问码和下面的学生入口发给该学生。" />}
       {ok === "access-off" && <OkNote text="已关闭该学生的个人版访问。" />}
       {ok === "unlocked" && <OkNote text="已解锁 ✅ 该生可正常登录学生端继续训练。" />}
+      {ok === "leave-approved" && <OkNote text="已批准请假 ✅ 该日不算缺勤。" />}
+      {ok === "leave-rejected" && <OkNote text="已拒绝该请假（仍算训练日，请提醒学生打卡）。" />}
       {ok === "adjusted" && <OkNote text="已根据学生最新反馈自动更新计划（已回到草稿）。学生端会收到“计划已更新”提示；请到计划页核对后重新确认。" />}
 
       {student.injuryNote && (
@@ -114,13 +118,13 @@ export default async function StudentDetailPage({ params, searchParams }: { para
             {attLocked ? (
               <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">已封锁</span>
             ) : attMissed > 0 ? (
-              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">缺勤 {attMissed} / 3</span>
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">缺勤 {attMissed} / {LOCK_THRESHOLD}</span>
             ) : (
               <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">正常</span>
             )}
           </div>
           <p className="mt-2 text-xs leading-relaxed text-slate-500">
-            {attLocked ? "该生已连续 3 次训练未打卡，系统已自动封锁学生端。解锁后学生可重新查看计划并继续训练。" : attMissed > 0 ? `该生已有 ${attMissed} 次训练未打卡（连续 3 次会自动封锁），请留意并提醒。` : "考勤正常。连续 3 次训练未打卡会自动封锁学生端，届时你可在这里一键解锁。"}
+{attLocked ? `该生已连续 ${LOCK_THRESHOLD} 次训练未打卡，系统已自动封锁学生端。解锁后学生可重新查看计划并继续训练。` : attMissed > 0 ? `该生已有 ${attMissed} 次训练未打卡（连续 ${LOCK_THRESHOLD} 次会自动封锁），请留意并提醒。` : `考勤正常。连续 ${LOCK_THRESHOLD} 次训练未打卡会自动封锁学生端，届时你可在这里一键解锁。`}
           </p>
           {attLocked && (
             <form action={unlockStudentAction} className="mt-3">
@@ -132,6 +136,9 @@ export default async function StudentDetailPage({ params, searchParams }: { para
           )}
         </div>
       )}
+
+      {/* 请假申请 */}
+      <LeaveSection leaves={leaves} />
 
       {/* 学生个人版 */}
       <div className="card p-5">
@@ -503,3 +510,61 @@ function StudentFeedbackSection({ feedback, hasPlan, studentId, hasLlm }: {
 
 
 
+
+
+function LeaveSection({ leaves }: { leaves: { id: string; date: string; status: string; reason: string | null }[] }) {
+  const pending = leaves.filter((x) => x.status === "pending");
+  const history = leaves.filter((x) => x.status !== "pending").slice(0, 8);
+  return (
+    <div className="card p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <CalendarClock className="h-5 w-5 text-sky-600" />
+          <h2 className="font-semibold text-slate-900">请假申请</h2>
+        </div>
+        <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700">待批准 {pending.length}</span>
+      </div>
+      <p className="mb-3 mt-1 text-xs text-slate-500">批准后，学生请假当天不算缺勤，不会触发封锁。</p>
+
+      {pending.length === 0 ? (
+        <p className="rounded-xl bg-slate-50 px-4 py-6 text-center text-sm text-slate-400">没有待批准的请假</p>
+      ) : (
+        <ul className="space-y-2">
+          {pending.map((x) => (
+            <li key={x.id} className="rounded-xl border border-sky-100 bg-sky-50/60 px-3 py-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                <div className="min-w-0">
+                  <div className="font-medium text-slate-800">📅 {fmtDate(x.date)}</div>
+                  <div className="text-xs text-slate-500">{x.reason ?? "未填写原因"}</div>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <form action={approveLeaveAction}>
+                    <input type="hidden" name="id" value={x.id} />
+                    <PendingSubmitButton pendingText="…" className="btn bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700">批准</PendingSubmitButton>
+                  </form>
+                  <form action={rejectLeaveAction}>
+                    <input type="hidden" name="id" value={x.id} />
+                    <PendingSubmitButton pendingText="…" className="btn btn-outline px-3 py-1.5 text-xs">拒绝</PendingSubmitButton>
+                  </form>
+                </div>
+              </div>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {history.length > 0 && (
+        <div className="mt-3 border-t border-slate-100 pt-2.5">
+          <div className="mb-1.5 text-xs font-medium text-slate-400">最近处理记录</div>
+          <div className="flex flex-wrap gap-1.5">
+            {history.map((x) => (
+              <span key={x.id} className={`rounded-full px-2 py-0.5 text-[11px] ${x.status === "approved" ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
+                {fmtDate(x.date)} · {x.status === "approved" ? "已批准" : "已拒绝"}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

@@ -1,5 +1,5 @@
 // 纯前端安全：考勤规则常量（不含任何服务端依赖，可被 client 组件引用）
-export const LOCK_THRESHOLD = 3;
+export const LOCK_THRESHOLD = 2;
 
 export const MUST_READ = {
   title: "训练前必读 · 考勤规则",
@@ -10,3 +10,4 @@ export const MUST_READ = {
     "如有特殊情况（受伤、考试、家里有事），提前在“训练反馈”里告诉教练，不算恶意缺勤。",
   ],
 };
+

@@ -9,6 +9,7 @@ import { OkBanner } from "@/components/error-banner";
 import CopyLinkButton from "@/components/copy-link-button";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { unlockStudentAction } from "@/lib/actions";
+import { LOCK_THRESHOLD } from "@/lib/attendance-shared";
 
 export const metadata: Metadata = { title: "学生管理" };
 
@@ -59,7 +60,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
       {locked.length > 0 && (
         <div className="rounded-2xl border border-rose-200 bg-rose-50/70 px-4 py-3">
           <div className="flex items-center gap-2 text-sm font-semibold text-rose-700">
-            <Lock className="h-4 w-4" /> {locked.length} 名学生因连续 3 次未打卡被系统封锁
+            <Lock className="h-4 w-4" /> {locked.length} 名学生因连续 {LOCK_THRESHOLD} 次未打卡被系统封锁
           </div>
           <ul className="mt-2 space-y-1.5">
             {locked.map((s) => (
@@ -117,7 +118,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{s.gender === "male" ? "男" : "女"}</span>
                     {Number(s.locked) === 1 && <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700">已封锁</span>}
                     {Number(s.locked) === 0 && Number(s.missedCount) > 0 && (
-                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">缺勤 {s.missedCount}/3</span>
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">缺勤 {s.missedCount}/{LOCK_THRESHOLD}</span>
                     )}
                     {s.trainingYears !== null && s.trainingYears !== undefined && (
                       <span className="text-xs text-slate-400">训龄 {s.trainingYears} 年</span>
@@ -137,3 +138,4 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
     </div>
   );
 }
+

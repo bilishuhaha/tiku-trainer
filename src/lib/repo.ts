@@ -420,3 +420,62 @@ export async function ackPlanNotice(planId: string, studentId: string): Promise<
 
 
 
+
+// ================= 请假（学生申请 -> 教练批准，批准日不算缺勤） =================
+export type LeaveStatus = "pending" | "approved" | "rejected";
+export interface LeaveRow {
+  id: string; studentId: string; date: string; reason: string | null;
+  status: LeaveStatus; createdAt: string; updatedAt: string;
+}
+function mapLeave(r: Row): LeaveRow {
+  return {
+    id: r.id as string,
+    studentId: r.student_id as string,
+    date: r.date as string,
+    reason: (r.reason as string) ?? null,
+    status: (r.status as LeaveStatus) ?? "pending",
+    createdAt: r.created_at as string,
+    updatedAt: r.updated_at as string,
+  };
+}
+
+export async function createLeave(studentId: string, date: string, reason: string | null): Promise<LeaveRow> {
+  const id = randomUUID();
+  const t = nowIso();
+  await getDb().execute({
+    sql: "INSERT INTO leaves (id, student_id, date, reason, status, created_at, updated_at) VALUES (?,?,?,?,'pending',?,?)",
+    args: [id, studentId, date, reason, t, t],
+  });
+  return { id, studentId, date, reason, status: "pending", createdAt: t, updatedAt: t };
+}
+
+export async function listLeavesByStudent(studentId: string, limit = 30): Promise<LeaveRow[]> {
+  const rs = await getDb().execute({
+    sql: "SELECT * FROM leaves WHERE student_id=? ORDER BY date DESC, created_at DESC LIMIT ?",
+    args: [studentId, limit],
+  });
+  return rs.rows.map((r) => mapLeave(r as Row));
+}
+
+/** 已批准的请假日期集合（这些天不算缺勤） */
+export async function listApprovedLeaveDates(studentId: string): Promise<string[]> {
+  const rs = await getDb().execute({
+    sql: "SELECT date FROM leaves WHERE student_id=? AND status='approved'",
+    args: [studentId],
+  });
+  return rs.rows.map((r) => r.date as string);
+}
+
+export async function findLeave(id: string): Promise<LeaveRow | null> {
+  const rs = await getDb().execute({ sql: "SELECT * FROM leaves WHERE id=?", args: [id] });
+  return rs.rows.length ? mapLeave(rs.rows[0] as Row) : null;
+}
+
+/** 教练批准/拒绝请假（须是该教练名下学生的请假，action 已校验归属） */
+export async function updateLeaveStatusByCoach(id: string, status: LeaveStatus): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE leaves SET status=?, updated_at=? WHERE id=?",
+    args: [status, nowIso(), id],
+  });
+}
+

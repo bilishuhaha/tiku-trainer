@@ -149,6 +149,16 @@ const DDL: string[] = [
     created_at TEXT NOT NULL
   )`,
   `CREATE INDEX IF NOT EXISTS idx_feedback_student ON feedback(student_id, date)`,
+  `CREATE TABLE IF NOT EXISTS leaves (
+    id TEXT PRIMARY KEY,
+    student_id TEXT NOT NULL,
+    date TEXT NOT NULL,
+    reason TEXT,
+    status TEXT NOT NULL DEFAULT 'pending',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_leaves_student ON leaves(student_id, date)`,
 ];
 
 let db: Db | null = null;
@@ -233,6 +243,7 @@ export async function initDatabaseForTests(): Promise<void> {
 export function nowIso(): string {
   return new Date().toISOString();
 }
+
 
 
 
