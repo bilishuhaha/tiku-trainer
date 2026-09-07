@@ -1,15 +1,16 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock, Smartphone, KeyRound, XCircle, MessageSquare, RefreshCcw } from "lucide-react";
+import { ArrowLeft, Pencil, Trash2, Target, ClipboardList, Activity, FileText, Sparkles, CalendarClock, Smartphone, KeyRound, XCircle, MessageSquare, RefreshCcw, Lock, Unlock } from "lucide-react";
 import { headers } from "next/headers";
 import { requireUser } from "@/lib/auth";
-import { findStudent, listFeedbackByStudent, listGoals, listScores, latestScoresByItem, listPlans } from "@/lib/repo";
+import { findStudent, listFeedbackByStudent, listGoals, listScores, latestScoresByItem, listPlans, syncAttendance } from "@/lib/repo";
 import { ConfirmForm } from "@/components/forms";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner } from "@/components/error-banner";
-import { adjustPlanFromFeedbackAction, clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction } from "@/lib/actions";
+import { adjustPlanFromFeedbackAction, clearAccessCodeAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, setGoalAction, addScoreAction, unlockStudentAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
 import { calcAge, fmtDate, todayInputValue, weeksUntil, round1, round2 } from "@/lib/format";
+import { evaluateAttendance } from "@/lib/attendance";
 
 export const metadata = { title: "学生档案" };
 
@@ -19,6 +20,18 @@ export default async function StudentDetailPage({ params, searchParams }: { para
   const user = await requireUser();
   const student = await findStudent(id, user.id);
   if (!student) notFound();
+
+  // 考勤状态（仅正式学生：实时按最新计划计算并回写，供列表/教练端显示）
+  let attLocked = Number(student.locked) === 1;
+  let attMissed = Number(student.missedCount);
+  if (student.pending !== 1) {
+    const att = await evaluateAttendance(student);
+    attMissed = att.missed;
+    attLocked = att.locked;
+    if (attMissed !== Number(student.missedCount) || (attLocked ? 1 : 0) !== Number(student.locked)) {
+      await syncAttendance(id, attMissed, attLocked ? 1 : 0);
+    }
+  }
 
   // 并行查询目标/成绩/计划/反馈，减少跨区网络下点开学生档案的等待
   const [goals, scores, latest, plans, feedback] = await Promise.all([
@@ -80,11 +93,43 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       {ok === "saved" && <OkNote text="已保存 ✓" />}
       {ok === "access" && <OkNote text="访问码已生成：请把访问码和下面的学生入口发给该学生。" />}
       {ok === "access-off" && <OkNote text="已关闭该学生的个人版访问。" />}
+      {ok === "unlocked" && <OkNote text="已解锁 ✅ 该生可正常登录学生端继续训练。" />}
       {ok === "adjusted" && <OkNote text="已根据学生最新反馈自动更新计划（已回到草稿）。学生端会收到“计划已更新”提示；请到计划页核对后重新确认。" />}
 
       {student.injuryNote && (
         <div className="rounded-xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-700">
           <strong>伤病/注意事项：</strong>{student.injuryNote}
+        </div>
+      )}
+
+
+      {/* 考勤状态与封锁 */}
+      {student.pending !== 1 && (
+        <div className={`card p-5 ${attLocked ? "border-rose-200" : ""}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              {attLocked ? <Lock className="h-5 w-5 text-rose-600" /> : <Activity className="h-5 w-5 text-slate-400" />}
+              <h2 className="font-semibold text-slate-900">考勤状态</h2>
+            </div>
+            {attLocked ? (
+              <span className="rounded-full bg-rose-100 px-2.5 py-1 text-xs font-semibold text-rose-700">已封锁</span>
+            ) : attMissed > 0 ? (
+              <span className="rounded-full bg-amber-100 px-2.5 py-1 text-xs font-semibold text-amber-700">缺勤 {attMissed} / 3</span>
+            ) : (
+              <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-semibold text-emerald-700">正常</span>
+            )}
+          </div>
+          <p className="mt-2 text-xs leading-relaxed text-slate-500">
+            {attLocked ? "该生已连续 3 次训练未打卡，系统已自动封锁学生端。解锁后学生可重新查看计划并继续训练。" : attMissed > 0 ? `该生已有 ${attMissed} 次训练未打卡（连续 3 次会自动封锁），请留意并提醒。` : "考勤正常。连续 3 次训练未打卡会自动封锁学生端，届时你可在这里一键解锁。"}
+          </p>
+          {attLocked && (
+            <form action={unlockStudentAction} className="mt-3">
+              <input type="hidden" name="id" value={id} />
+              <PendingSubmitButton pendingText="解锁中…" className="btn btn-dark text-xs">
+                <Unlock className="h-3.5 w-3.5" /> 解锁该学生
+              </PendingSubmitButton>
+            </form>
+          )}
         </div>
       )}
 
@@ -455,4 +500,6 @@ function StudentFeedbackSection({ feedback, hasPlan, studentId, hasLlm }: {
     </div>
   );
 }
+
+
 

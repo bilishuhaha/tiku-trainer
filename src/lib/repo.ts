@@ -7,7 +7,7 @@ export interface StudentRow {
   birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null;
   injuryNote: string | null; note: string | null; accessCode: string | null; weekdays: string | null;
-  contact: string | null; pending: number;
+  contact: string | null; pending: number; missedCount: number; locked: number;
   createdAt: string; updatedAt: string;
 }
 export interface GoalRow { id: string; studentId: string; event: string; target: number; note: string | null; }
@@ -31,6 +31,7 @@ function mapStudent(r: Row): StudentRow {
     goalNote: (r.goal_note as string) ?? null, injuryNote: (r.injury_note as string) ?? null, note: (r.note as string) ?? null,
     accessCode: (r.access_code as string) ?? null, weekdays: (r.weekdays as string) ?? null,
     contact: (r.contact as string) ?? null, pending: Number(r.pending ?? 0),
+    missedCount: Number(r.missed_count ?? 0), locked: Number(r.locked ?? 0),
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -330,6 +331,27 @@ export async function updateUser(id: string, fields: { name?: string; passwordHa
 }
 
 
+// ================= 考勤：缺勤计数 / 封锁 / 解锁 =================
+/** 学生在进入学生端时同步缺勤计数（locked 只在缺勤>=3 时置 1，不自动清除） */
+export async function syncAttendance(studentId: string, missedCount: number, locked: number): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE students SET missed_count=?, locked=CASE WHEN ?=1 THEN 1 ELSE locked END, updated_at=? WHERE id=?",
+    args: [Math.max(0, missedCount), locked, nowIso(), studentId],
+  });
+}
+
+/** 教练解锁：清除封锁与缺勤计数，并把该生最新计划起点重置到今天（避免历史缺勤再次触发封锁） */
+export async function unlockAttendance(studentId: string, coachId: string): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE students SET locked=0, missed_count=0, updated_at=? WHERE id=? AND coach_id=?",
+    args: [nowIso(), studentId, coachId],
+  });
+  await getDb().execute({
+    sql: `UPDATE plans SET start_date=substr(?,1,10) WHERE student_id=? AND coach_id=? AND id=
+          (SELECT id FROM plans WHERE student_id=? AND coach_id=? ORDER BY created_at DESC LIMIT 1)`,
+    args: [nowIso(), studentId, coachId, studentId, coachId],
+  });
+}
 // ================= 训练反馈（学生 -> 教练） =================
 export interface FeedbackRow {
   id: string;
@@ -393,6 +415,8 @@ export async function ackPlanNotice(planId: string, studentId: string): Promise<
     args: [planId, studentId],
   });
 }
+
+
 
 
 

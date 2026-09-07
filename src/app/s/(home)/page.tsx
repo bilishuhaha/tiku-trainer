@@ -1,16 +1,18 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
-import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown, MessageSquare } from "lucide-react";
+import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown, MessageSquare, Lock } from "lucide-react";
 import { requireStudent } from "@/lib/auth";
-import { findActivePlan, findStudentById, listCheckins, listFeedbackByStudent, listGoals } from "@/lib/repo";
+import { findActivePlan, findStudentById, listCheckins, listFeedbackByStudent, listGoals, syncAttendance } from "@/lib/repo";
 import { setMyWeekdaysAction, submitFeedbackAction } from "@/lib/actions";
 import { ErrorBanner, OkBanner } from "@/components/error-banner";
 import CheckinControl from "@/components/student-checkin";
+import AttendanceWarnModal from "@/components/attendance-warn";
 import PlanUpdatedBanner from "@/components/plan-updated-banner";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { EVENTS, EVENT_ORDER, itemUnit } from "@/lib/domain/items";
 import type { PlanDoc, DayDoc, BlockDoc } from "@/lib/domain/types";
 import { localDateKey, weeksUntil } from "@/lib/format";
+import { LOCK_THRESHOLD, MUST_READ, computeMissed } from "@/lib/attendance";
 import {
   WEEKDAY_LABELS, buildWeek, currentPhase, defaultWeekdays, parseWeekdays, planWeekIndex, weekdayOf,
 } from "@/lib/student-view";
@@ -34,10 +36,34 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   const todayLabel = WEEKDAY_LABELS[todayWd - 1];
   const dateText = `${today.getMonth() + 1}月${today.getDate()}日`;
 
+  // ===== 考勤：连续未打卡计数 / 封锁 =====
+  let missed = 0;
+  let locked = Number(student.locked) === 1;
+  if (plan && parseWeekdays(student.weekdays).length > 0) {
+    const chk = await listCheckins(plan.id);
+    missed = computeMissed(plan, student.weekdays, new Set(chk.map((x) => x.date)));
+    locked = missed >= LOCK_THRESHOLD || Number(student.locked) === 1;
+    if (missed !== Number(student.missedCount) || (locked ? 1 : 0) !== Number(student.locked)) {
+      await syncAttendance(student.id, missed, locked ? 1 : 0);
+    }
+  }
+  if (locked) {
+    return <LockedPanel name={student.name} />;
+  }
+
   return (
     <div className="space-y-4">
       <ErrorBanner error={error} />
       <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : null} />
+
+
+      {/* 缺勤警告弹窗（第 1/2 次） */}
+      {!locked && missed > 0 && missed < LOCK_THRESHOLD && (
+        <AttendanceWarnModal missed={missed} name={student.name} />
+      )}
+
+      {/* 训练前必读公告 */}
+      <NoticeCard />
 
       {/* 教练更新计划提示 */}
       {plan && plan.noticeRev > plan.seenRev && <PlanUpdatedBanner planId={plan.id} />}
@@ -392,6 +418,43 @@ function FeedbackCard({ recent }: { recent: { date: string; feel: number | null;
           </ul>
         </div>
       )}
+    </div>
+  );
+}
+
+
+
+function NoticeCard() {
+  return (
+    <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-3">
+      <div className="text-sm font-semibold text-sky-900">📌 {MUST_READ.title}</div>
+      <ul className="mt-1.5 space-y-1">
+        {MUST_READ.lines.map((l, i) => (
+          <li key={i} className="flex gap-1.5 text-xs leading-relaxed text-sky-800/90">
+            <span className="mt-1.5 h-1 w-1 shrink-0 rounded-full bg-sky-400" />
+            <span>{l}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function LockedPanel({ name }: { name: string }) {
+  return (
+    <div className="card p-8 text-center">
+      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 text-rose-600">
+        <Lock className="h-8 w-8" />
+      </div>
+      <h2 className="mt-4 text-xl font-bold text-slate-900">系统已封锁</h2>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
+        {name}，因为你已连续 {LOCK_THRESHOLD} 次训练没有打卡，
+        系统判定你不认真对待训练，已将你的系统封锁。
+      </p>
+      <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-slate-600">
+        如有需要，请联系教练帮你开锁。
+      </p>
+      <p className="mt-4 text-xs text-slate-400">封锁期间无法查看训练安排；教练解锁后才能继续。</p>
     </div>
   );
 }

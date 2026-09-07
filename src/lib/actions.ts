@@ -14,7 +14,7 @@ import {
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
   findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail, findUserById,
   listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAccessCode, setStudentWeekdays,
-  updatePlan, updatePlanContent, updateStudent, updateUser,
+  unlockAttendance, updatePlan, updatePlanContent, updateStudent, updateUser,
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";
@@ -625,4 +625,18 @@ export async function confirmPendingAction(fd: FormData): Promise<void> {
   await confirmStudentPending(id, user.id);
   redirect(`/students/${id}?ok=confirmed`);
 }
+
+
+// ================= 考勤：教练解锁封锁 =================
+export async function unlockStudentAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const id = str(fd, "id");
+  const student = await findStudent(id, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  await unlockAttendance(id, user.id);
+  const back = str(fd, "back");
+  if (back === "list") redirect("/students?ok=unlocked");
+  redirect(`/students/${id}?ok=unlocked`);
+}
+
 
