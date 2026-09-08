@@ -57,7 +57,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-4">
       <ErrorBanner error={error} />
-      <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : null} />
+      <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : ok === "enrolled" ? "🎉 已自动为你开通训练：档案、访问码和第一版训练计划都已生成（教练那边也能看到）。选好每周训练日即可开始！" : null} />
 
 
       {/* 缺勤警告弹窗（第 1/2 次） */}
@@ -519,4 +519,5 @@ function LeaveCard({ recent }: { recent: { date: string; status: string; reason:
     </div>
   );
 }
+
 

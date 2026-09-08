@@ -10,6 +10,7 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
+import { setUserAutoEnroll } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
@@ -613,6 +614,41 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
       await addScore(student.id, today, item, v, "新生评估自报");
     }
   }
+
+  // ===== 全自动模式：建档（跳过待确认）+ 生成访问码 + 自动生成计划 + 直接登录学生端 =====
+  if (coach.autoEnroll === 1) {
+    await confirmStudentPending(student.id, coachId);
+    const code = randomCode();
+    await setStudentAccessCode(student.id, coachId, code);
+    const latest = await latestScoresByItem(student.id);
+    const req: PlanRequest = {
+      student: {
+        id: student.id, name: student.name,
+        gender: student.gender === "female" ? "female" : "male",
+        weightKg: student.weight, trainingYears: student.trainingYears,
+        examDate: student.examDate, injuryNote: student.injuryNote,
+      },
+      latest,
+      goals: { sprint: null, tripleJump: null, shotPut: null },
+      daysPerWeek: 6,
+    };
+    const doc = buildPlanDoc(req, { daysPerWeek: 6 });
+    await createPlan({
+      studentId: student.id,
+      coachId,
+      title: doc.meta.title,
+      status: "draft",
+      goalSummary: doc.meta.coachAdvice.join("\n"),
+      diagnosis: JSON.stringify(doc.diagnosis),
+      structure: JSON.stringify(doc),
+      coachNote: "新生评估表自动建档生成，请教练核对后确认。",
+      aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek: 6, generatedAt: doc.meta.generatedAt, by: "auto-enroll" }),
+      examDate: student.examDate,
+      startDate: localDateKey(),
+    });
+    await createStudentSession({ id: student.id, name: student.name });
+    redirect("/s?ok=enrolled");
+  }
   redirect("/s/join?done=1");
 }
 
@@ -692,4 +728,15 @@ export async function coachMarkCheckinAction(fd: FormData): Promise<void> {
   const locked = after.missed >= LOCK_THRESHOLD ? 1 : 0;
   await setStudentAttendance(student.id, after.missed, locked);
   redirect(`/students/${studentId}?ok=coach-checkin`);
+}
+
+
+// 教练：切换新生报名模式（全自动 / 需确认）
+export async function toggleAutoEnrollAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const raw = str(fd, "value").trim();
+  const next = raw === "1" ? 1 : raw === "0" ? 0 : null;
+  if (next === null) return errTo("/students", "参数无效");
+  await setUserAutoEnroll(user.id, next);
+  redirect("/students");
 }

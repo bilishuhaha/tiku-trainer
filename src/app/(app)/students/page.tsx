@@ -3,12 +3,12 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { Plus, ChevronRight, Inbox, UserRoundCheck, Lock, Unlock } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { listPendingStudents, listStudents, countPlansByCoach } from "@/lib/repo";
+import { findUserById, listPendingStudents, listStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 import { OkBanner } from "@/components/error-banner";
 import CopyLinkButton from "@/components/copy-link-button";
 import PendingSubmitButton from "@/components/pending-submit-button";
-import { unlockStudentAction } from "@/lib/actions";
+import { toggleAutoEnrollAction, unlockStudentAction } from "@/lib/actions";
 import { LOCK_THRESHOLD } from "@/lib/attendance-shared";
 
 export const metadata: Metadata = { title: "学生管理" };
@@ -28,6 +28,9 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "";
   const proto = process.env.COOKIE_SECURE === "true" ? "https" : "http";
   const enrollUrl = host ? `${proto}://${host}/s/join?c=${user.id}` : "";
+  const fullUser = await findUserById(user.id);
+  const autoMode = Number(fullUser?.autoEnroll ?? 1) === 1;
+
 
   return (
     <div className="space-y-5">
@@ -46,6 +49,18 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
             <Plus className="h-4 w-4" /> 添加学生
           </Link>
         </div>
+      </div>
+
+      {/* 报名模式开关 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5">
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${autoMode ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+          {autoMode ? "全自动报名：已开启" : "报名模式：需教练确认"}
+        </span>
+        <form action={toggleAutoEnrollAction}>
+          <input type="hidden" name="value" value={autoMode ? "0" : "1"} />
+          <PendingSubmitButton pendingText="切换中…" className="btn btn-outline px-3 py-1 text-xs">{autoMode ? "改回：需教练确认" : "开启：全自动"}</PendingSubmitButton>
+        </form>
+        <span className="min-w-0 flex-1 text-[11px] text-slate-400">全自动 = 学生提交评估表后，系统自动建档+生成访问码+自动生成训练计划，并直接进入学生端。</span>
       </div>
 
       <OkBanner ok={
@@ -138,4 +153,5 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
     </div>
   );
 }
+
 
