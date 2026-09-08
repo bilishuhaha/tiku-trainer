@@ -10,6 +10,7 @@ import AttendanceWarnModal from "@/components/attendance-warn";
 import PlanUpdatedBanner from "@/components/plan-updated-banner";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import ScoreCalculator from "@/components/score-calculator";
+import PlanDisclaimerModal from "@/components/plan-disclaimer";
 import { EVENTS, EVENT_ORDER, itemUnit } from "@/lib/domain/items";
 import type { PlanDoc, DayDoc, BlockDoc } from "@/lib/domain/types";
 import { localDateKey, weeksUntil } from "@/lib/format";
@@ -56,6 +57,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
 
   return (
     <div className="space-y-4">
+      <PlanDisclaimerModal />
       <ErrorBanner error={error} />
       <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : ok === "enrolled" ? "🎉 已自动为你开通训练：档案、访问码和第一版训练计划都已生成（教练那边也能看到）。选好每周训练日即可开始！" : null} />
 
