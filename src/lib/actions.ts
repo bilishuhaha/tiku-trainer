@@ -6,11 +6,12 @@ import { z } from "zod";
 import { createSession, createStudentSession, destroySession, destroyStudentSession, requireStudent, requireUser, verifyCredentials } from "./auth";
 import { EVENTS, EVENT_ORDER, ITEMS, isLowerBetter } from "./domain/items";
 import { buildPlanDoc } from "./domain/plan";
+import { buildSinglePlanDoc } from "./domain/single-plan";
 import { enhanceWithLlm } from "./domain/llm";
-import type { EventKey, PlanRequest } from "./domain/types";
+import type { EventKey, PlanDoc, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
-import { setStudentAutoEnrolled, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
+import { setStudentAutoEnrolled, setStudentSingleEnabled, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
@@ -344,7 +345,8 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
   const student = await findStudent(plan.studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
 
-  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number } };
+  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string } };
+  const isSingle = prev.meta?.program === "single";
   const daysRaw = prev.meta?.daysPerWeek ?? 6;
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
 
@@ -478,20 +480,10 @@ export async function dismissPlanNoticeAction(fd: FormData): Promise<{ ok: boole
   return { ok: true };
 }
 
-// 教练：根据学生最近反馈 + 最新成绩，自动重建并微调计划
-export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> {
-  const user = await requireUser();
-  const studentId = str(fd, "studentId");
-  const student = await findStudent(studentId, user.id);
-  if (!student) return errTo("/students", "学生不存在");
-
-  const plans = await listPlans(studentId);
-  plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  const plan = plans[0];
-  if (!plan) return errTo(`/students/${studentId}`, "还没有训练计划，请先点击上方生成一份");
-  if (plan.coachId !== user.id) return errTo(`/students/${studentId}`, "无权调整该学生的计划");
-
-  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number } };
+// 共用重建逻辑：按学生最新成绩 + 最近反馈重建计划（含单招专项计划），教练端与学生端复用
+async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wantLlm: boolean): Promise<PlanDoc> {
+  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string } };
+  const isSingle = prev.meta?.program === "single";
   const daysRaw = prev.meta?.daysPerWeek ?? 6;
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
 
@@ -516,7 +508,9 @@ export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> 
     daysPerWeek,
   };
 
-  const doc = buildPlanDoc(req, { daysPerWeek });
+  const doc = isSingle
+    ? buildSinglePlanDoc({ name: student.name, gender: student.gender === "female" ? "female" : "male", examDate: student.examDate, injuryNote: student.injuryNote, latest, daysPerWeek })
+    : buildPlanDoc(req, { daysPerWeek });
   const trends = recentTrendLines(await listScores(student.id));
   for (const t of trends) doc.meta.coachAdvice.push(t);
 
@@ -539,7 +533,6 @@ export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> 
     doc.meta.coachAdvice.unshift("【自动调整】暂未收到学生训练反馈，本版按最新成绩重新诊断生成。");
   }
 
-  const wantLlm = str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY;
   if (wantLlm) {
     const enhanced = await enhanceWithLlm(doc);
     if (enhanced) {
@@ -548,14 +541,31 @@ export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> 
       doc.meta.basis = enhanced.basis;
     }
   }
+  return doc;
+}
 
+// 教练：根据学生最近反馈 + 最新成绩，自动重建并微调计划（重建为草稿，教练确认后学生可见）
+export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+
+  const plans = await listPlans(studentId);
+  plans.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  const plan = plans[0];
+  if (!plan) return errTo(`/students/${studentId}`, "还没有训练计划，请先点击上方生成一份");
+  if (plan.coachId !== user.id) return errTo(`/students/${studentId}`, "无权调整该学生的计划");
+
+  const doc = await rebuildDocFromLatestState(student, plan, str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY);
+  const prev = JSON.parse(plan.structure) as { meta?: { program?: string } };
   await updatePlanContent(plan.id, user.id, {
     title: doc.meta.title,
     status: "draft",
     goalSummary: doc.meta.coachAdvice.join("\n"),
     diagnosis: JSON.stringify(doc.diagnosis),
     structure: JSON.stringify(doc),
-    aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true, by: "feedback" }),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: prev.meta?.program === "single" ? "single" : undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true, by: "feedback" }),
     startDate: localDateKey(),
     examDate: student.examDate,
   });
@@ -563,7 +573,45 @@ export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> 
   redirect(`/students/${studentId}?ok=adjusted`);
 }
 
+// 学生：根据自己最近的训练反馈一键自动调整（更新）自己的计划，调整后立即生效
+export async function adjustMyPlanFromFeedbackAction(fd: FormData): Promise<void> {
+  const me = await requireStudent();
+  const student = await findStudentById(me.id);
+  if (!student) return errTo("/s", "学生不存在");
+  const plan = await findActivePlan(student.id);
+  if (!plan) return errTo("/s", "还没有训练计划，暂时无法自动调整");
 
+  const prev = JSON.parse(plan.structure) as { meta?: { program?: string } };
+  if (prev.meta?.program === "single") return errTo("/s", "单招专项计划暂不支持学生自助调整，需要调整请联系教练");
+
+  const fb = await listFeedbackByStudent(student.id, 40);
+  if (!fb.length) return errTo("/s", "你还没有提交过训练反馈。先在下方「练完写个反馈」提交一次，系统才能据此自动调整计划");
+
+  // 防重复：上次“学生自助调整”之后没有新反馈时，不再空转重生成
+  let lastAt: string | null = null;
+  try {
+    const meta = plan.aiMeta ? (JSON.parse(plan.aiMeta) as { by?: string; adjustedAt?: string }) : null;
+    if (meta?.by === "student-feedback" && meta.adjustedAt) lastAt = meta.adjustedAt;
+  } catch { /* ai_meta 内容异常时忽略，允许调整 */ }
+  if (lastAt) {
+    const newest = fb.reduce((mx, f) => (f.createdAt > mx ? f.createdAt : mx), fb[0].createdAt);
+    if (newest <= lastAt) return errTo("/s", "在你上次自动调整之后还没有新的反馈。如果身体感觉有变化，请先更新今天的反馈，再点自动调整");
+  }
+
+  const doc = await rebuildDocFromLatestState(student, plan, str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY);
+  await updatePlanContentByStudent(plan.id, student.id, {
+    title: doc.meta.title,
+    // 保留原状态：已定稿的计划调整后继续对学生可见（不退回草稿等教练确认）
+    status: plan.status === "confirmed" ? "confirmed" : plan.status,
+    goalSummary: doc.meta.coachAdvice.join("\n"),
+    diagnosis: JSON.stringify(doc.diagnosis),
+    structure: JSON.stringify(doc),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true, by: "student-feedback", adjustedAt: new Date().toISOString() }),
+    startDate: localDateKey(),
+    examDate: student.examDate,
+  });
+  redirect("/s?ok=adjusted");
+}
 // ================= 新生自助报名（身体评估表 -> 教练待确认） =================
 
 // 报名表里可填的“当前成绩”项（会按对应项目自动入档）
@@ -751,4 +799,54 @@ export async function toggleAutoConfirmAction(fd: FormData): Promise<void> {
   if (next === null) return errTo("/students", "参数无效");
   await setUserAutoConfirm(user.id, next);
   redirect("/students");
+}
+
+// 教练：授权/关闭某学生的单招模式
+export async function enableSingleAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const value = Number(str(fd, "value")) === 1 ? 1 : 0;
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  await setStudentSingleEnabled(studentId, user.id, value);
+  redirect(value === 1 ? `/students/${studentId}?ok=single-on` : `/students/${studentId}?ok=single-off`);
+}
+
+// 教练：生成单招专项计划（仅限已授权学生，学生端无此入口）
+export async function generateSinglePlanAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  if (Number(student.singleEnabled) !== 1) return errTo(`/students/${studentId}`, "该学生尚未开通单招，请先授权再生成");
+  const daysRaw = Number(str(fd, "daysPerWeek") || "6");
+  const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
+  const latest = await latestScoresByItem(studentId);
+  const doc = buildSinglePlanDoc({
+    name: student.name,
+    gender: student.gender === "female" ? "female" : "male",
+    examDate: student.examDate,
+    injuryNote: student.injuryNote,
+    latest,
+    daysPerWeek,
+  });
+  const wantLlm = str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY;
+  if (wantLlm) {
+    const enhanced = await enhanceWithLlm(doc);
+    if (enhanced) { doc.meta.mode = enhanced.mode; doc.meta.coachAdvice = enhanced.coachAdvice; doc.meta.basis = enhanced.basis; }
+  }
+  const plan = await createPlan({
+    studentId: student.id,
+    coachId: user.id,
+    title: doc.meta.title,
+    status: "draft",
+    goalSummary: doc.meta.coachAdvice.join("\n"),
+    diagnosis: JSON.stringify(doc.diagnosis),
+    structure: JSON.stringify(doc),
+    coachNote: "单招专项计划（100米+急行跳远）· 请核对后确认。",
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: "single", daysPerWeek, generatedAt: doc.meta.generatedAt }),
+    examDate: student.examDate,
+    startDate: localDateKey(),
+  });
+  redirect(`/plans/${plan.id}`);
 }

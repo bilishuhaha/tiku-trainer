@@ -89,6 +89,7 @@ export interface PlanDoc {
     weeksToExam: number | null;
     daysPerWeek: number;
     mode: "rule" | "llm";
+    program?: "gaokao" | "single";
     examDate: string | null;
     title: string;
     coachAdvice: string[];
@@ -118,3 +119,4 @@ export interface PlanRequest {
   goals: Record<EventKey, number | null>;
   daysPerWeek: number;
 }
+

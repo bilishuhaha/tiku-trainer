@@ -7,7 +7,7 @@ export interface StudentRow {
   birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null;
   injuryNote: string | null; note: string | null; accessCode: string | null; weekdays: string | null;
-  contact: string | null; pending: number; autoEnrolled: number; missedCount: number; locked: number;
+  contact: string | null; pending: number; autoEnrolled: number; singleEnabled: number; missedCount: number; locked: number;
   createdAt: string; updatedAt: string;
 }
 export interface GoalRow { id: string; studentId: string; event: string; target: number; note: string | null; }
@@ -31,7 +31,7 @@ function mapStudent(r: Row): StudentRow {
     goalNote: (r.goal_note as string) ?? null, injuryNote: (r.injury_note as string) ?? null, note: (r.note as string) ?? null,
     accessCode: (r.access_code as string) ?? null, weekdays: (r.weekdays as string) ?? null,
     contact: (r.contact as string) ?? null, pending: Number(r.pending ?? 0),
-    autoEnrolled: Number(r.auto_enrolled ?? 0),
+    autoEnrolled: Number(r.auto_enrolled ?? 0), singleEnabled: Number(r.single_enabled ?? 0),
     missedCount: Number(r.missed_count ?? 0), locked: Number(r.locked ?? 0),
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
@@ -138,6 +138,10 @@ export async function listPendingStudents(coachId: string): Promise<StudentRow[]
 }
 
 /** 教练确认新生入库 */
+
+export async function setStudentSingleEnabled(id: string, coachId: string, v: number): Promise<void> {
+  await getDb().execute({ sql: "UPDATE students SET single_enabled=? WHERE id=? AND coach_id=?", args: [v ? 1 : 0, id, coachId] });
+}
 export async function setStudentAutoEnrolled(id: string): Promise<void> {
   await getDb().execute({ sql: "UPDATE students SET auto_enrolled=1 WHERE id=?", args: [id] });
 }

@@ -7,6 +7,7 @@ export const ITEMS: Record<string, ItemDef> = {
   sprint150: { key: "sprint150", label: "150米", unit: "秒", dir: "down", group: "sprint", event: "sprint" },
   tripleJump: { key: "tripleJump", label: "立定三级跳远", unit: "米", dir: "up", group: "jump", event: "tripleJump", note: "完整动作" },
   standingLongJump: { key: "standingLongJump", label: "立定跳远", unit: "米", dir: "up", group: "jump", event: "tripleJump" },
+  runLongJump: { key: "runLongJump", label: "急行跳远（助跑）", unit: "米", dir: "up", group: "jump", note: "单招项目：助跑+踏板起跳" },
   shotPut: { key: "shotPut", label: "原地推铅球", unit: "米", dir: "up", group: "throw", event: "shotPut", note: "男5kg/女4kg，按本省标准" },
   medBallBack: { key: "medBallBack", label: "后抛实心球(2kg)", unit: "米", dir: "up", group: "throw", event: "shotPut" },
   squat: { key: "squat", label: "深蹲（杠铃）", unit: "kg", dir: "up", group: "strength", event: "shotPut" },
@@ -57,3 +58,4 @@ export function eventOfItem(key: string): EventKey | undefined {
 export function eventPrimaryItem(ev: EventKey): string {
   return EVENTS[ev].primaryItem;
 }
+
