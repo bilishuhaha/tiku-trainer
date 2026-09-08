@@ -35,6 +35,11 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   ]);
   if (!student) redirect("/s/login");
 
+  // 计划类型：single=单招专项（100米+急行跳远），否则按统考（术科）展示
+  const planProgram = plan
+    ? ((JSON.parse(plan.structure) as { meta?: { program?: "single" | "gaokao" } }).meta?.program ?? "gaokao")
+    : null;
+
   const today = new Date();
   const todayWd = weekdayOf(today);
   const todayLabel = WEEKDAY_LABELS[todayWd - 1];
@@ -79,7 +84,15 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
         <p className="mt-0.5 text-sm text-slate-500">{dateText} · {todayLabel}</p>
       </div>
 
-      {goals.length > 0 && (
+      {/* 单招专项考生提示：明确考试项目（学生端只读提示，无生成入口） */}
+      {planProgram === "single" && plan && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+          <div className="text-sm font-semibold text-violet-800">🏅 你是「单招专项」考生</div>
+          <p className="mt-0.5 text-xs leading-relaxed text-violet-700">考试项目：<b>100 米 + 急行跳远（助跑跳远）</b>。你的训练与成绩目标只围绕这两项进行，不涉及铅球 / 三级跳远。</p>
+        </div>
+      )}
+
+      {planProgram !== "single" && goals.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {EVENT_ORDER.map((ev) => {
             const g = goals.find((x) => x.event === ev);
@@ -99,8 +112,8 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
         </div>
       )}
 
-      {/* 广东术科算分器（学生自测） */}
-      <ScoreCalculator />
+      {/* 广东术科算分器（学生自测）——仅统考考生展示 */}
+      {planProgram !== "single" && <ScoreCalculator />}
 
       {!plan ? (
         <NoPlanCard />

@@ -30,6 +30,14 @@ function errTo(url: string, msg: string): never {
   redirect(`${url}${url.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`);
 }
 
+/** 判断一份计划是否为单招专项计划（按 structure.meta.program） */
+function planIsSingle(plan: { structure: string }): boolean {
+  try {
+    const m = (JSON.parse(plan.structure) as { meta?: { program?: string } }).meta;
+    return m?.program === "single";
+  } catch { return false; }
+}
+
 // ---------- 认证 ----------
 export async function loginAction(fd: FormData): Promise<void> {
   const email = str(fd, "email").trim();
@@ -142,6 +150,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
   const studentId = str(fd, "studentId");
   const student = await findStudent(studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
+  if (Number(student.singleEnabled) === 1) return errTo(`/students/${studentId}`, "该生已开通单招：请用上方「单招专项计划（100米+急行跳远）」生成，统考（术科）计划生成已停用");
   const daysRaw = Number(str(fd, "daysPerWeek") || "6");
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
   const hadPlan = (await listPlans(studentId)).length > 0;
@@ -198,6 +207,11 @@ export async function confirmPlanAction(fd: FormData): Promise<void> {
   const plan = await findPlan(id, user.id);
   if (!plan) return errTo("/students", "计划不存在");
   await updatePlan(id, user.id, { status: "confirmed" });
+  // 单招计划定稿时，顺手清理该生残留的统考（非单招）计划，避免学生端仍显示旧统考计划
+  if (planIsSingle(plan)) {
+    const leftovers = (await listPlans(plan.studentId)).filter((p) => p.id !== plan.id && !planIsSingle(p));
+    for (const p of leftovers) await deletePlan(p.id, user.id);
+  }
   redirect(`/plans/${id}`);
 }
 
