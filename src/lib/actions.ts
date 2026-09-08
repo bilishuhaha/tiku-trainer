@@ -12,12 +12,13 @@ import type { EventKey, PlanDoc, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
 import { setStudentAutoEnrolled, setStudentSingleEnabled, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
+import type { PlanRow, StudentRow } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
-  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findUserByEmail, findUserById,
+  findActivePlan, findCheckinByPlanDate, findPlan, findPlanForStudent, findStudent, findStudentByAccessCode, findStudentById, findUserByEmail, findUserById,
   listFeedbackByStudent, listGoals, listPlans, listScores, latestScoresByItem, setGoal, setStudentAttendance, setStudentAccessCode, setStudentWeekdays,
-  findLeave, unlockAttendance, updateLeaveStatusByCoach, updatePlan, updatePlanContent, updateStudent, updateUser,
+  findLeave, unlockAttendance, updateLeaveStatusByCoach, updatePlan, updatePlanContent, updatePlanContentByStudent, updateStudent, updateUser,
 } from "./repo";
 
 const str = (fd: FormData, k: string) => (fd.get(k) as string | null) ?? "";

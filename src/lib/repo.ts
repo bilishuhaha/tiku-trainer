@@ -336,6 +336,28 @@ export async function updatePlanContent(id: string, coachId: string, fields: Pla
   await getDb().execute({ sql, args });
 }
 
+/** 学生本人自助更新计划内容（用于“按反馈自动调整”，仅限本人计划） */
+export async function updatePlanContentByStudent(id: string, studentId: string, fields: PlanContentFields): Promise<void> {
+  const sets: string[] = [];
+  const args: (string | number | null)[] = [];
+  const push = (col: string, val: unknown) => {
+    if (val !== undefined) { sets.push(col + "=?"); args.push(val as string | number | null); }
+  };
+  push("title", fields.title);
+  push("status", fields.status);
+  push("goal_summary", fields.goalSummary);
+  push("diagnosis", fields.diagnosis);
+  push("structure", fields.structure);
+  push("ai_meta", fields.aiMeta);
+  push("start_date", fields.startDate);
+  push("exam_date", fields.examDate);
+  sets.push("updated_at=?");
+  args.push(nowIso());
+  args.push(id, studentId);
+  const sql = "UPDATE plans SET " + sets.join(",") + " WHERE id=? AND student_id=?";
+  await getDb().execute({ sql, args });
+}
+
 export async function updateUser(id: string, fields: { name?: string; passwordHash?: string }): Promise<void> {
   const sets: string[] = [];
   const args: (string | number | null)[] = [];

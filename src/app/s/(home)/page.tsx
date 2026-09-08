@@ -3,7 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown, MessageSquare, Lock } from "lucide-react";
 import { requireStudent } from "@/lib/auth";
 import { findActivePlan, findStudentById, listApprovedLeaveDates, listCheckins, listFeedbackByStudent, listGoals, listLeavesByStudent, syncAttendance } from "@/lib/repo";
-import { setMyWeekdaysAction, studentLeaveAction, submitFeedbackAction } from "@/lib/actions";
+import { adjustMyPlanFromFeedbackAction, setMyWeekdaysAction, studentLeaveAction, submitFeedbackAction } from "@/lib/actions";
 import { ErrorBanner, OkBanner } from "@/components/error-banner";
 import CheckinControl from "@/components/student-checkin";
 import AttendanceWarnModal from "@/components/attendance-warn";
@@ -59,7 +59,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
     <div className="space-y-4">
       <PlanDisclaimerModal />
       <ErrorBanner error={error} />
-      <OkBanner ok={ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : ok === "enrolled" ? `🎉 已自动为你开通训练！你的访问码：${student.accessCode ?? "（见档案）"}（请保存，下次可用它登录）。档案与第一版训练计划都已自动生成（教练那边也能看到），选好每周训练日即可开始！` : null} />
+      <OkBanner ok={ok === "adjusted" ? "已根据你的反馈重新生成了训练计划 ✓ 本周安排已更新（若强度仍不合适，请继续提交反馈）" : ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : ok === "enrolled" ? `🎉 已自动为你开通训练！你的访问码：${student.accessCode ?? "（见档案）"}（请保存，下次可用它登录）。档案与第一版训练计划都已自动生成（教练那边也能看到），选好每周训练日即可开始！` : null} />
 
 
       {/* 缺勤警告弹窗（第 1/2 次） */}
@@ -380,7 +380,7 @@ function FeedbackCard({ recent }: { recent: { date: string; feel: number | null;
         <MessageSquare className="h-5 w-5 text-emerald-600" />
         <h2 className="font-semibold text-slate-900">练完写个反馈（几秒钟）</h2>
       </div>
-      <p className="mb-3 text-xs text-slate-500">会自动同步给教练，教练会据此调整你的训练计划。</p>
+      <p className="mb-3 text-xs text-slate-500">会同步给教练；也可以点下面按钮，按你自己的反馈<b>立即自动调整计划</b>。</p>
       <form action={submitFeedbackAction} className="space-y-3">
         <input type="hidden" name="date" value={localDateKey(new Date())} />
         <div>
@@ -431,12 +431,31 @@ function FeedbackCard({ recent }: { recent: { date: string; feel: number | null;
           </ul>
         </div>
       )}
+
+      {/* 学生自助：按反馈自动调整计划 */}
+      <div className="mt-3 rounded-xl border border-sky-100 bg-sky-50/70 p-3">
+        <div className="text-xs font-semibold text-sky-800">🤖 想让计划跟着反馈自动调整？</div>
+        {recent.length === 0 ? (
+          <p className="mt-1 text-[11px] leading-relaxed text-sky-700/80">
+            先在上面提交一次训练反馈，这里就会出现「按反馈自动调整」按钮。
+          </p>
+        ) : (
+          <>
+            <p className="mt-1 text-[11px] leading-relaxed text-sky-700/80">
+              系统会结合你最近的成绩与训练感受，重新生成一版计划并<b>直接更新</b>（当天即可看到新安排；之后提交了新反馈，可以再次调整）。
+            </p>
+            <form action={adjustMyPlanFromFeedbackAction} className="mt-2">
+              <input type="hidden" name="useLlm" value="1" />
+              <PendingSubmitButton pendingText="生成中…" className="btn w-full bg-sky-600 py-2 text-sm text-white hover:bg-sky-700">
+                按我的反馈自动调整计划
+              </PendingSubmitButton>
+            </form>
+          </>
+        )}
+      </div>
     </div>
   );
 }
-
-
-
 function NoticeCard() {
   return (
     <div className="rounded-2xl border border-sky-200 bg-sky-50/80 px-4 py-3">
