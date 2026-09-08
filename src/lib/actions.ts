@@ -346,47 +346,13 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
   const student = await findStudent(plan.studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
 
-  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string } };
+  const prev = JSON.parse(plan.structure) as { meta?: { program?: string } };
   const isSingle = prev.meta?.program === "single";
-  const daysRaw = prev.meta?.daysPerWeek ?? 6;
-  const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
 
-  const goals = await listGoals(student.id);
-  const latest = await latestScoresByItem(student.id);
-  const goalMap: Record<EventKey, number | null> = { sprint: null, tripleJump: null, shotPut: null };
-  for (const g of goals) {
-    if (g.event in goalMap) (goalMap as Record<string, number | null>)[g.event] = g.target;
-  }
-  const req: PlanRequest = {
-    student: {
-      id: student.id,
-      name: student.name,
-      gender: student.gender === "female" ? "female" : "male",
-      weightKg: student.weight,
-      trainingYears: student.trainingYears,
-      examDate: student.examDate,
-      injuryNote: student.injuryNote,
-    },
-    latest,
-    goals: goalMap,
-    daysPerWeek,
-  };
-
-  const doc = buildPlanDoc(req, { daysPerWeek });
-  const trends = recentTrendLines(await listScores(student.id));
-  for (const t of trends) doc.meta.coachAdvice.push(t);
+  // 复用统一重建逻辑：按最新成绩/反馈重建，单招专项走单招生成器，统考走标准生成器
+  const doc = await rebuildDocFromLatestState(student, plan, str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY);
   const note = str(fd, "statusNote").trim();
   if (note) doc.meta.coachAdvice.unshift(`教练本次更新说明：${note}`);
-
-  const wantLlm = str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY;
-  if (wantLlm) {
-    const enhanced = await enhanceWithLlm(doc);
-    if (enhanced) {
-      doc.meta.mode = enhanced.mode;
-      doc.meta.coachAdvice = enhanced.coachAdvice;
-      doc.meta.basis = enhanced.basis;
-    }
-  }
 
   await updatePlanContent(planId, user.id, {
     title: doc.meta.title,
@@ -394,7 +360,7 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
     goalSummary: doc.meta.coachAdvice.join("\n"),
     diagnosis: JSON.stringify(doc.diagnosis),
     structure: JSON.stringify(doc),
-    aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true }),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: isSingle ? "single" : undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true }),
     startDate: localDateKey(),
     examDate: student.examDate,
   });
