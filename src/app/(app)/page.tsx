@@ -25,6 +25,7 @@ export default async function DashboardPage() {
     return w !== null && w >= 0 && w <= 8;
   });
   const totalPlans = Object.values(planCountMap).reduce((a, c) => a + c, 0);
+  const autoNew = students.filter((s) => Number(s.autoEnrolled) === 1 && Date.now() - new Date(s.createdAt).getTime() < 72 * 3600e3);
 
   return (
     <div className="space-y-6">
@@ -35,6 +36,11 @@ export default async function DashboardPage() {
           {pending.length > 0 && (
             <Link href="/students/pending" className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-700 hover:bg-amber-200">
               🔔 {pending.length} 位新生待确认
+            </Link>
+          )}
+          {autoNew.length > 0 && (
+            <Link href="/students" className="mt-1 inline-flex items-center gap-1 rounded-full bg-emerald-100 px-2.5 py-1 text-xs font-medium text-emerald-700 hover:bg-emerald-200">
+              🆕 {autoNew.length} 位学生刚刚自动加入
             </Link>
           )}
         </div>

@@ -23,6 +23,8 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
   ]);
   const counts = new Map<string, number>(Object.entries(planCounts));
   const locked = students.filter((s) => Number(s.locked) === 1);
+  const autoNew = students.filter((s) => Number(s.autoEnrolled) === 1 && Date.now() - new Date(s.createdAt).getTime() < 72 * 3600e3);
+
 
   const hdrs = await headers();
   const host = hdrs.get("x-forwarded-host") ?? hdrs.get("host") ?? "";
@@ -50,6 +52,19 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
           </Link>
         </div>
       </div>
+
+      {/* 刚刚自动加入的学生 */}
+      {autoNew.length > 0 && (
+        <div className="rounded-2xl border border-emerald-200 bg-gradient-to-r from-emerald-50 to-teal-50/70 px-4 py-3">
+          <div className="text-sm font-semibold text-emerald-800">🆕 {autoNew.length} 位学生刚刚通过“自动报名”加入</div>
+          <div className="mt-1.5 flex flex-wrap gap-2">
+            {autoNew.map((s) => (
+              <Link key={s.id} href={`/students/${s.id}`} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50">{s.name} · 去核对 →</Link>
+            ))}
+          </div>
+          <p className="mt-1.5 text-[11px] text-slate-500">系统已自动建档并生成访问码与训练计划，点学生名字进入档案核对/确认。</p>
+        </div>
+      )}
 
       {/* 报名模式开关 */}
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5">
@@ -125,12 +140,14 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {students.map((s) => {
             const w = weeksUntil(s.examDate);
+            const autoFresh = Number(s.autoEnrolled) === 1 && Date.now() - new Date(s.createdAt).getTime() < 72 * 3600e3;
             return (
               <Link key={s.id} href={`/students/${s.id}`} className={`card group flex items-center justify-between gap-3 p-4 transition hover:border-emerald-300 hover:shadow-md ${Number(s.locked) === 1 ? "border-rose-200 bg-rose-50/40" : ""}`}>
                 <div className="min-w-0">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-semibold text-slate-900">{s.name}</span>
                     <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{s.gender === "male" ? "男" : "女"}</span>
+                    {autoFresh ? <span className="rounded-full bg-emerald-100 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-700">🆕 刚刚自动加入</span> : Number(s.autoEnrolled) === 1 ? <span className="rounded-full bg-emerald-50 px-1.5 py-0.5 text-[11px] font-semibold text-emerald-600">自动报名</span> : null}
                     {Number(s.locked) === 1 && <span className="rounded-full bg-rose-100 px-1.5 py-0.5 text-[11px] font-semibold text-rose-700">已封锁</span>}
                     {Number(s.locked) === 0 && Number(s.missedCount) > 0 && (
                       <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">缺勤 {s.missedCount}/{LOCK_THRESHOLD}</span>

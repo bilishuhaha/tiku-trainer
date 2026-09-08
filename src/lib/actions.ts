@@ -10,7 +10,7 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
-import { setUserAutoEnroll } from "./repo";
+import { setStudentAutoEnrolled, setUserAutoEnroll } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
@@ -618,6 +618,7 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
   // ===== 全自动模式：建档（跳过待确认）+ 生成访问码 + 自动生成计划 + 直接登录学生端 =====
   if (coach.autoEnroll === 1) {
     await confirmStudentPending(student.id, coachId);
+    await setStudentAutoEnrolled(student.id);
     const code = randomCode();
     await setStudentAccessCode(student.id, coachId, code);
     const latest = await latestScoresByItem(student.id);
@@ -740,3 +741,4 @@ export async function toggleAutoEnrollAction(fd: FormData): Promise<void> {
   await setUserAutoEnroll(user.id, next);
   redirect("/students");
 }
+
