@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { Plus, ChevronRight, Inbox, UserRoundCheck, Lock, Unlock } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { findUserById, listPendingStudents, listStudents, countPlansByCoach } from "@/lib/repo";
+import { findUserById, listDraftStudentIdsByCoach, listPendingStudents, listStudents, countPlansByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 import { OkBanner } from "@/components/error-banner";
 import CopyLinkButton from "@/components/copy-link-button";
@@ -16,13 +16,15 @@ export const metadata: Metadata = { title: "学生管理" };
 export default async function StudentsPage({ searchParams }: { searchParams: Promise<{ ok?: string }> }) {
   const { ok } = await searchParams;
   const user = await requireUser();
-  const [students, pending, planCounts] = await Promise.all([
+  const [students, pending, planCounts, draftIdsRaw] = await Promise.all([
     listStudents(user.id),
     listPendingStudents(user.id),
     countPlansByCoach(user.id),
+    listDraftStudentIdsByCoach(user.id),
   ]);
   const counts = new Map<string, number>(Object.entries(planCounts));
   const locked = students.filter((s) => Number(s.locked) === 1);
+  const draftSet = new Set(draftIdsRaw);
   const autoNew = students.filter((s) => Number(s.autoEnrolled) === 1 && Date.now() - new Date(s.createdAt).getTime() < 72 * 3600e3);
 
 
@@ -60,10 +62,10 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
           <div className="text-sm font-semibold text-emerald-800">🆕 {autoNew.length} 位学生刚刚通过“自动报名”加入</div>
           <div className="mt-1.5 flex flex-wrap gap-2">
             {autoNew.map((s) => (
-              <Link key={s.id} href={`/students/${s.id}`} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50">{s.name} · 去核对 →</Link>
+              <Link key={s.id} href={`/students/${s.id}`} className="rounded-full bg-white px-2.5 py-1 text-xs font-medium text-emerald-700 ring-1 ring-emerald-200 hover:bg-emerald-50">{s.name}{draftSet.has(s.id) ? " · 去核对 →" : " · 已定稿 ✓"}</Link>
             ))}
           </div>
-          <p className="mt-1.5 text-[11px] text-slate-500">系统已自动建档并生成访问码与训练计划，点学生名字进入档案核对/确认。</p>
+          <p className="mt-1.5 text-[11px] text-slate-500">{autoNew.some((s) => draftSet.has(s.id)) ? "系统已自动建档并生成访问码与训练计划；带“去核对”的还有草稿计划，点名字进入档案核对/确认。" : "这些自动报名学生的计划已全部定稿，点名字可查看档案。"}</p>
         </div>
       )}
 

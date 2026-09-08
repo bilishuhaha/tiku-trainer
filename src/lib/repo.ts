@@ -503,3 +503,12 @@ export async function updateLeaveStatusByCoach(id: string, status: LeaveStatus):
 
 
 
+
+/** 该教练名下仍有草稿计划的学生 id（用于“是否需要去核对”提示） */
+export async function listDraftStudentIdsByCoach(coachId: string): Promise<string[]> {
+  const rs = await getDb().execute({
+    sql: "SELECT DISTINCT student_id FROM plans WHERE coach_id=? AND status='draft'",
+    args: [coachId],
+  });
+  return rs.rows.map((r) => r.student_id as string);
+}
