@@ -219,10 +219,11 @@ export async function confirmPlanAction(fd: FormData): Promise<void> {
   const plan = await findPlan(id, user.id);
   if (!plan) return errTo("/students", "计划不存在");
   await updatePlan(id, user.id, { status: "confirmed" });
-  // 单招计划定稿时，顺手清理该生残留的统考（非单招）计划，避免学生端仍显示旧统考计划
+  // 单招计划定稿时：只保留这份最新单招计划，清掉该生其他计划（旧“两项都练”/旧统考等），
+  // 避免学生端仍看到与当前报考项目不一致的旧计划
   if (planIsSingle(plan)) {
-    const leftovers = (await listPlans(plan.studentId)).filter((p) => p.id !== plan.id && !planIsSingle(p));
-    for (const p of leftovers) await deletePlan(p.id, user.id);
+    const others = (await listPlans(plan.studentId)).filter((p) => p.id !== plan.id);
+    for (const p of others) await deletePlan(p.id, user.id);
   }
   redirect(`/plans/${id}`);
 }

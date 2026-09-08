@@ -113,7 +113,8 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       {ok === "leave-approved" && <OkNote text="已批准请假 ✅ 该日不算缺勤。" />}
       {ok === "leave-rejected" && <OkNote text="已拒绝该请假（仍算训练日，请提醒学生打卡）。" />}
       {ok === "coach-checkin" && <OkNote text="已为该生补打卡，撤销该天缺勤 ✅" />}
-      {ok === "single-on" && <OkNote text="已开通单招 ✅ 该学生可生成单招专项计划（100米+急行跳远）。" />}
+      {ok === "single-on" && <OkNote text="已开通单招 ✅ 请在该生档案里选好单招项目（百米 / 急行跳远 / 两项都练）后生成计划。" />}
+      {ok === "single-event" && <OkNote text="已保存单招项目 ✅ 若该生已有旧计划，请点上方“按当前项目生成单招计划”重新生成并“确认（定稿）”，学生端才会更新为所选专项内容。" />}
       {ok === "single-off" && <OkNote text="已关闭单招授权。" />}
       {ok === "adjusted" && <OkNote text="已根据学生最新反馈自动更新计划（已回到草稿）。学生端会收到“计划已更新”提示；请到计划页核对后重新确认。" />}
 
@@ -197,7 +198,8 @@ export default async function StudentDetailPage({ params, searchParams }: { para
               <form action={enableSingleAction}><input type="hidden" name="studentId" value={id} /><input type="hidden" name="value" value="0" /><PendingSubmitButton pendingText="处理中…" className="btn btn-outline px-3 py-1 text-xs">关闭授权</PendingSubmitButton></form>
             </div>
 
-            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <form action={setSingleEventAction} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <input type="hidden" name="studentId" value={id} />
               <div className="text-xs font-semibold text-slate-700">单招项目选择（改完点“保存”，下次生成按此）</div>
               <div className="mt-2 grid gap-1.5 text-xs text-slate-600">
                 {SINGLE_EV_OPTIONS.map((o) => (
@@ -207,11 +209,8 @@ export default async function StudentDetailPage({ params, searchParams }: { para
                   </label>
                 ))}
               </div>
-              <form action={setSingleEventAction} className="mt-2">
-                <input type="hidden" name="studentId" value={id} />
-                <PendingSubmitButton pendingText="保存中…" className="btn btn-outline border-emerald-300 px-3 py-1 text-xs text-emerald-700">保存所选项目</PendingSubmitButton>
-              </form>
-            </div>
+              <PendingSubmitButton pendingText="保存中…" className="btn btn-outline border-emerald-300 px-3 py-1 text-xs text-emerald-700">保存所选项目</PendingSubmitButton>
+            </form>
 
             <form action={generateSinglePlanAction} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
               <input type="hidden" name="studentId" value={id} />
