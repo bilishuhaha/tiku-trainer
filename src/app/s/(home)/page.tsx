@@ -35,10 +35,12 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   ]);
   if (!student) redirect("/s/login");
 
-  // 计划类型：single=单招专项（100米+急行跳远），否则按统考（术科）展示
-  const planProgram = plan
-    ? ((JSON.parse(plan.structure) as { meta?: { program?: "single" | "gaokao" } }).meta?.program ?? "gaokao")
+  // 计划类型：single=单招专项（百米/急行跳远/两项），否则按统考（术科）展示
+  const planMeta = plan
+    ? ((JSON.parse(plan.structure) as { meta?: { program?: "single" | "gaokao"; singleEvents?: "sprint" | "longJump" | "both" } }).meta ?? null)
     : null;
+  const planProgram = plan ? (planMeta?.program ?? "gaokao") : null;
+  const singleEvents = planProgram === "single" ? (planMeta?.singleEvents ?? "both") : null;
 
   const today = new Date();
   const todayWd = weekdayOf(today);
@@ -88,7 +90,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
       {planProgram === "single" && plan && (
         <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
           <div className="text-sm font-semibold text-violet-800">🏅 你是「单招专项」考生</div>
-          <p className="mt-0.5 text-xs leading-relaxed text-violet-700">考试项目：<b>100 米 + 急行跳远（助跑跳远）</b>。你的训练与成绩目标只围绕这两项进行，不涉及铅球 / 三级跳远。</p>
+          <p className="mt-0.5 text-xs leading-relaxed text-violet-700">考试项目：{singleEvents === "sprint" ? (<b>100 米</b>) : singleEvents === "longJump" ? (<b>急行跳远（助跑跳远）</b>) : (<><b>100 米</b> + <b>急行跳远（助跑跳远）</b></>)}。你的训练与成绩目标只围绕报考项目进行，不涉及铅球 / 三级跳远。</p>
         </div>
       )}
 

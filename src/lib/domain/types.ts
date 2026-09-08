@@ -82,6 +82,8 @@ export interface PeriodDoc {
   weeklySchedule: DayDoc[];
 }
 
+export type SingleEvents = "sprint" | "longJump" | "both";
+
 export interface PlanDoc {
   version: number;
   meta: {
@@ -90,6 +92,7 @@ export interface PlanDoc {
     daysPerWeek: number;
     mode: "rule" | "llm";
     program?: "gaokao" | "single";
+    singleEvents?: "sprint" | "longJump" | "both";
     examDate: string | null;
     title: string;
     coachAdvice: string[];

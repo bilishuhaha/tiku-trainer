@@ -8,10 +8,10 @@ import { EVENTS, EVENT_ORDER, ITEMS, isLowerBetter } from "./domain/items";
 import { buildPlanDoc } from "./domain/plan";
 import { buildSinglePlanDoc } from "./domain/single-plan";
 import { enhanceWithLlm } from "./domain/llm";
-import type { EventKey, PlanDoc, PlanRequest } from "./domain/types";
+import type { EventKey, PlanDoc, PlanRequest, SingleEvents } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
-import { setStudentAutoEnrolled, setStudentSingleEnabled, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
+import { setStudentAutoEnrolled, setStudentSingleEnabled, setStudentSingleEvent, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
 import type { PlanRow, StudentRow } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
@@ -37,6 +37,18 @@ function planIsSingle(plan: { structure: string }): boolean {
     return m?.program === "single";
   } catch { return false; }
 }
+
+/** 规范化单招项目选择：sprint=百米 / longJump=急行跳远 / both=两项都练 */
+function normSingleEvents(v: string | null | undefined): SingleEvents {
+  const x = (v ?? "both").trim();
+  return x === "sprint" || x === "longJump" || x === "both" ? x : "both";
+}
+
+const SINGLE_EV_LABEL: Record<SingleEvents, string> = {
+  sprint: "百米（100米）",
+  longJump: "急行跳远",
+  both: "100米 + 急行跳远",
+};
 
 // ---------- 认证 ----------
 export async function loginAction(fd: FormData): Promise<void> {
@@ -360,7 +372,7 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
   const student = await findStudent(plan.studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
 
-  const prev = JSON.parse(plan.structure) as { meta?: { program?: string } };
+  const prev = JSON.parse(plan.structure) as { meta?: { program?: string; singleEvents?: SingleEvents } };
   const isSingle = prev.meta?.program === "single";
 
   // 复用统一重建逻辑：按最新成绩/反馈重建，单招专项走单招生成器，统考走标准生成器
@@ -374,7 +386,7 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
     goalSummary: doc.meta.coachAdvice.join("\n"),
     diagnosis: JSON.stringify(doc.diagnosis),
     structure: JSON.stringify(doc),
-    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: isSingle ? "single" : undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true }),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: isSingle ? "single" : undefined, singleEvents: isSingle ? normSingleEvents(prev.meta?.singleEvents) : undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true }),
     startDate: localDateKey(),
     examDate: student.examDate,
   });
@@ -463,10 +475,11 @@ export async function dismissPlanNoticeAction(fd: FormData): Promise<{ ok: boole
 
 // 共用重建逻辑：按学生最新成绩 + 最近反馈重建计划（含单招专项计划），教练端与学生端复用
 async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wantLlm: boolean): Promise<PlanDoc> {
-  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string } };
+  const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string; singleEvents?: SingleEvents } };
   const isSingle = prev.meta?.program === "single";
   const daysRaw = prev.meta?.daysPerWeek ?? 6;
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
+  const events = normSingleEvents(prev.meta?.singleEvents);
 
   const goals = await listGoals(student.id);
   const latest = await latestScoresByItem(student.id);
@@ -490,7 +503,7 @@ async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wan
   };
 
   const doc = isSingle
-    ? buildSinglePlanDoc({ name: student.name, gender: student.gender === "female" ? "female" : "male", examDate: student.examDate, injuryNote: student.injuryNote, latest, daysPerWeek })
+    ? buildSinglePlanDoc({ name: student.name, gender: student.gender === "female" ? "female" : "male", examDate: student.examDate, injuryNote: student.injuryNote, latest, daysPerWeek, events })
     : buildPlanDoc(req, { daysPerWeek });
   const trends = recentTrendLines(await listScores(student.id));
   for (const t of trends) doc.meta.coachAdvice.push(t);
@@ -539,14 +552,14 @@ export async function adjustPlanFromFeedbackAction(fd: FormData): Promise<void> 
   if (plan.coachId !== user.id) return errTo(`/students/${studentId}`, "无权调整该学生的计划");
 
   const doc = await rebuildDocFromLatestState(student, plan, str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY);
-  const prev = JSON.parse(plan.structure) as { meta?: { program?: string } };
+  const prev = JSON.parse(plan.structure) as { meta?: { program?: string; singleEvents?: SingleEvents } };
   await updatePlanContent(plan.id, user.id, {
     title: doc.meta.title,
     status: "draft",
     goalSummary: doc.meta.coachAdvice.join("\n"),
     diagnosis: JSON.stringify(doc.diagnosis),
     structure: JSON.stringify(doc),
-    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: prev.meta?.program === "single" ? "single" : undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true, by: "feedback" }),
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: prev.meta?.program === "single" ? "single" : undefined, singleEvents: prev.meta?.program === "single" ? normSingleEvents(prev.meta?.singleEvents) : undefined, daysPerWeek: doc.meta.daysPerWeek, generatedAt: doc.meta.generatedAt, updated: true, by: "feedback" }),
     startDate: localDateKey(),
     examDate: student.examDate,
   });
@@ -790,7 +803,23 @@ export async function enableSingleAction(fd: FormData): Promise<void> {
   const student = await findStudent(studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
   await setStudentSingleEnabled(studentId, user.id, value);
+  if (value === 1) {
+    const ev = normSingleEvents(str(fd, "singleEvent"));
+    await setStudentSingleEvent(studentId, user.id, ev);
+  }
   redirect(value === 1 ? `/students/${studentId}?ok=single-on` : `/students/${studentId}?ok=single-off`);
+}
+
+// 教练：修改已开通单招学生的单招项目（百米 / 急行跳远 / 两项都练）
+export async function setSingleEventAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const studentId = str(fd, "studentId");
+  const student = await findStudent(studentId, user.id);
+  if (!student) return errTo("/students", "学生不存在");
+  if (Number(student.singleEnabled) !== 1) return errTo(`/students/${studentId}`, "该学生尚未开通单招，请先开通");
+  const ev = normSingleEvents(str(fd, "singleEvent"));
+  await setStudentSingleEvent(studentId, user.id, ev);
+  redirect(`/students/${studentId}?ok=single-event`);
 }
 
 // 教练：生成单招专项计划（仅限已授权学生，学生端无此入口）
@@ -803,6 +832,7 @@ export async function generateSinglePlanAction(fd: FormData): Promise<void> {
   const daysRaw = Number(str(fd, "daysPerWeek") || "6");
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
   const latest = await latestScoresByItem(studentId);
+  const events = normSingleEvents(student.singleEvent);
   const doc = buildSinglePlanDoc({
     name: student.name,
     gender: student.gender === "female" ? "female" : "male",
@@ -810,6 +840,7 @@ export async function generateSinglePlanAction(fd: FormData): Promise<void> {
     injuryNote: student.injuryNote,
     latest,
     daysPerWeek,
+    events,
   });
   const wantLlm = str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY;
   if (wantLlm) {
@@ -824,8 +855,8 @@ export async function generateSinglePlanAction(fd: FormData): Promise<void> {
     goalSummary: doc.meta.coachAdvice.join("\n"),
     diagnosis: JSON.stringify(doc.diagnosis),
     structure: JSON.stringify(doc),
-    coachNote: "单招专项计划（100米+急行跳远）· 请核对后确认。",
-    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: "single", daysPerWeek, generatedAt: doc.meta.generatedAt }),
+    coachNote: `单招专项计划（${SINGLE_EV_LABEL[events]}）· 请核对后确认。`,
+    aiMeta: JSON.stringify({ mode: doc.meta.mode, program: "single", singleEvents: events, daysPerWeek, generatedAt: doc.meta.generatedAt }),
     examDate: student.examDate,
     startDate: localDateKey(),
   });

@@ -11,6 +11,7 @@
 import { planPhases } from "./plan";
 import { weeksUntil } from "../format";
 import type { BlockDoc, DayDoc, ExerciseDoc, Finding, PeriodDoc, PhaseKey, PlanDoc, Severity } from "./types";
+import type { SingleEvents } from "./types";
 
 interface Input {
   name: string;
@@ -19,6 +20,8 @@ interface Input {
   injuryNote: string | null;
   latest: Record<string, { value: number; date: string }>;
   daysPerWeek: number;
+  /** 单招项目：sprint=百米 / longJump=急行跳远 / both=两项都练（默认） */
+  events?: SingleEvents;
 }
 
 function pick<T>(phase: PhaseKey, m: Record<PhaseKey, T>): T {
@@ -140,6 +143,70 @@ const ROLE_BY_K: Record<number, RolePlus[]> = {
 };
 type RolePlus = Role | "jumpTech";
 
+// —— 单招项目聚焦：按所选项目决定每周课型组合 ——
+// sprint（百米单招）：速度课×2 + 速度耐力 + 力量爆发(+技术/恢复)，不设急行跳远技术主课
+// longJump（急行跳远单招）：跳远技术 + 跳远分解 + 助跑速度/短冲 + 力量爆发(+恢复)，不设 100 米后程速度耐力课
+// both（两项都练）：沿用上方 ROLE_BY_K 的组合
+const SPRINT_TECH: Record<PhaseKey, ExerciseDoc[]> = {
+  base: [
+    ex("马克操 + 摆臂分解", "各 3 组", "低-中", "-", "建立短跑技术模型：摆臂、脚掌落地、躯干姿态"),
+    ex("起跑器/站立式起跑分解", "8 次", "90%", "组间 2 分钟", "反应 + 前三步，力量方向向前向下"),
+    ex("途中跑姿势练习（放松大步）", "4×60 米", "80%", "组间 2 分钟", "送髋、脚掌落地、摆臂以肩为轴"),
+    ex("录像对照：一次只改一个要点", "按需", "-", "-", "USATF：即时反馈修正动作模型"),
+  ],
+  build: [
+    ex("站立式起跑 30 米（技术计时）", "6×30 米", "95%", "组间 3 分钟", "专注前 3-6 步爆发与逐步抬身"),
+    ex("行进间 40 米（最大速度）", "4×40 米", "100%", "组间 3-4 分钟", "体会“快而松”，不僵硬"),
+    ex("60 米技术计时", "3×60 米", "90-95%", "组间 4 分钟", "加速→途中衔接，后程保持放松"),
+    ex("听信号起跑出发（反应）", "6 次", "95%", "组间 2 分钟", "出发节奏固定，不抢不慢"),
+  ],
+  specific: [
+    ex("起跑 30 米（计时）", "4×30 米", "100%", "组间 4-5 分钟", "一次成型，模拟考试"),
+    ex("100 米全程（技术型）", "2×100 米", "95-100%", "组间 6-8 分钟", "节奏分配 + 放松后程，记录成绩"),
+    ex("录像节奏核对", "按需", "-", "-", "看分段衔接，找后程掉速原因"),
+  ],
+  taper: [
+    ex("轻技术操 + 摆臂分解", "10 分钟", "低", "-", "保持神经-肌肉连接，不疲劳"),
+    ex("60 米放松大步跑", "2×60 米", "90%", "组间 4 分钟", "找“快而松”的感觉"),
+  ],
+};
+
+// 百米单招下，“技术课”定位为百米技术精修（衔接/放松/送髋）
+const SPRINT_TECH_TITLE: Record<PhaseKey, string> = {
+  base: "百米 · 技术精修（摆臂/落点/姿态）",
+  build: "百米 · 技术精修（衔接/放松/送髋）",
+  specific: "百米 · 技术巩固（录像微调）",
+  taper: "百米 · 轻技术保持",
+};
+
+// 跳远单招下，“速度课”定位为助跑速度/短冲（非 100 米比赛课）
+const LONGJUMP_SPEED_TITLE: Record<PhaseKey, string> = {
+  base: "急行跳远 · 助跑速度（短冲加速）",
+  build: "急行跳远 · 助跑速度（短冲，节奏渐快）",
+  specific: "急行跳远 · 助跑速度质量课（接近考试）",
+  taper: "急行跳远 · 助跑速度刺激（减量）",
+};
+
+function rolesFor(events: SingleEvents, k: number): RolePlus[] {
+  if (events === "sprint") {
+    const m: Record<number, RolePlus[]> = {
+      4: ["speed", "power", "speedEnd", "speed"],
+      5: ["speed", "power", "speedEnd", "speed", "tech"],
+      6: ["speed", "power", "speedEnd", "speed", "tech", "recovery"],
+    };
+    return m[k] ?? m[6];
+  }
+  if (events === "longJump") {
+    const m: Record<number, RolePlus[]> = {
+      4: ["jump", "power", "speed", "jumpTech"],
+      5: ["jump", "power", "speed", "jumpTech", "speed"],
+      6: ["jump", "power", "speed", "jumpTech", "speed", "recovery"],
+    };
+    return m[k] ?? m[6];
+  }
+  return ROLE_BY_K[k] ?? ROLE_BY_K[6];
+}
+
 const ROLE_TITLES: Record<RolePlus, Record<PhaseKey, string>> = {
   speed: {
     base: "100米 · 技术 + 起跑加速（一般准备）",
@@ -186,7 +253,7 @@ const ROLE_TITLES: Record<RolePlus, Record<PhaseKey, string>> = {
 };
 
 // ============ 主课内容（按阶段推进，专项化） ============
-function mainItems(role: RolePlus, phase: PhaseKey): ExerciseDoc[] {
+function mainItems(role: RolePlus, phase: PhaseKey, events: SingleEvents = "both"): ExerciseDoc[] {
   if (role === "speed") {
     return pick(phase, {
       base: [
@@ -302,6 +369,7 @@ function mainItems(role: RolePlus, phase: PhaseKey): ExerciseDoc[] {
     });
   }
   if (role === "tech") {
+    if (events === "sprint") return pick(phase, SPRINT_TECH);
     return pick(phase, {
       base: [
         ex("马克操 + 摆臂分解", "各 3 组", "低-中", "-", "建立正确技术模型（USATF 教学顺序：先模型后强度）"),
@@ -430,31 +498,31 @@ function roleTechNotes(role: RolePlus, phase: PhaseKey): string[] {
   return m[role]?.[phase] ?? [];
 }
 
-function dayBlock(role: RolePlus, phase: PhaseKey, day: number, minutes: number, a: SingleAnalysis): DayDoc {
+function dayBlock(role: RolePlus, phase: PhaseKey, day: number, minutes: number, a: SingleAnalysis, events: SingleEvents = "both"): DayDoc {
   const isJump = role === "jump" || role === "jumpTech";
   const isRecovery = role === "recovery";
   const tag = role === "speed" ? SPEED_FOCUS_TAG[a.speedFocus] : "";
   const aux = auxItems(role, phase, a);
   const blocks: BlockDoc[] = [warmup(isJump)];
   if (isRecovery) {
-    blocks.push({ kind: "aux", label: "主动恢复 + 核心稳定", items: mainItems(role, phase) });
+    blocks.push({ kind: "aux", label: "主动恢复 + 核心稳定", items: mainItems(role, phase, events) });
   } else {
-    blocks.push({ kind: "main", label: mainLabel(role), items: mainItems(role, phase) });
+    blocks.push({ kind: "main", label: mainLabel(role, events), items: mainItems(role, phase, events) });
     if (aux.length) blocks.push({ kind: "aux", label: "辅助：专项补强 / 核心 / 监控", items: aux });
     blocks.push({ kind: "core", label: "核心与落地安全（3-5 分钟）", items: coreBlock() });
   }
   blocks.push(cooldown());
   return {
     day,
-    title: ROLE_TITLES[role][phase] + tag,
+    title: (events === "longJump" && role === "speed" ? LONGJUMP_SPEED_TITLE[phase] : events === "sprint" && role === "tech" ? SPRINT_TECH_TITLE[phase] : ROLE_TITLES[role][phase]) + tag,
     durationMin: minutes,
     blocks,
     techNotes: roleTechNotes(role, phase),
   };
 }
 
-function mainLabel(role: RolePlus): string {
-  if (role === "speed") return "主课：100 米速度训练";
+function mainLabel(role: RolePlus, events: SingleEvents = "both"): string {
+  if (role === "speed") return events === "longJump" ? "主课：助跑速度 / 短冲" : "主课：100 米速度训练";
   if (role === "jump" || role === "jumpTech") return "主课：急行跳远专项";
   if (role === "power") return "主课：力量与爆发";
   if (role === "speedEnd") return "主课：速度耐力 / 后程";
@@ -507,6 +575,13 @@ export function buildSinglePlanDoc(input: Input): PlanDoc {
   const totalWeeks = realWeeks !== null && realWeeks > 0 ? realWeeks : 12;
   const phases = planPhases(totalWeeks);
   const a = analyzeSingle(input);
+  const events: SingleEvents = input.events ?? "both";
+  const hasSprint = events === "sprint" || events === "both";
+  const hasJump = events === "longJump" || events === "both";
+  const evTitle =
+    events === "sprint" ? "百米单招训练计划"
+    : events === "longJump" ? "急行跳远单招训练计划"
+    : "单招专项（100米+急行跳远）训练计划";
 
   const periods: PeriodDoc[] = phases.map((p) => ({
     key: p.key,
@@ -515,8 +590,8 @@ export function buildSinglePlanDoc(input: Input): PlanDoc {
     goal: PHASE_GOAL[p.key],
     principles: PHASE_PRINCIPLES[p.key],
     progression: PROGRESSION[p.key],
-    weeklySchedule: (ROLE_BY_K[k] ?? ROLE_BY_K[6]).map((role, idx) =>
-      dayBlock(role, p.key, idx + 1, pick(p.key, { base: 95, build: 105, specific: 100, taper: 75 }), a),
+    weeklySchedule: rolesFor(events, k).map((role, idx) =>
+      dayBlock(role, p.key, idx + 1, pick(p.key, { base: 95, build: 105, specific: 100, taper: 75 }), a, events),
     ),
   }));
 
@@ -530,13 +605,20 @@ export function buildSinglePlanDoc(input: Input): PlanDoc {
   }
 
   const advice: string[] = [];
-  advice.push(`单招专项：100 米 + 急行跳远（助跑跳远）。每周 ${k} 练，按“速度 / 跳远 / 力量爆发 / 速度耐力${k >= 5 ? " / 技术精修" : ""}${k >= 6 ? " / 跳远分解+恢复" : ""}”课型组合，保证两项主项每周都有高质量专项课。`);
+  advice.push(
+    events === "sprint"
+      ? `百米单招专项。每周 ${k} 练，按“速度课 / 力量爆发 / 速度耐力${k >= 5 ? " / 百米技术精修" : ""}${k >= 6 ? " / 主动恢复" : ""}”课型组合（速度课每周 2 次）；跳跃只作为下肢爆发力发展手段（跳深/连续跳/跳箱），不安排急行跳远完整技术主课。`
+      : events === "longJump"
+      ? `急行跳远单招专项。每周 ${k} 练，按“跳远技术 / 力量爆发 / 助跑速度·短冲 / 跳远分解${k >= 5 ? " / 助跑速度" : ""}${k >= 6 ? " / 主动恢复" : ""}”课型组合；短跑只用于助跑速度与跑跳能力（20-60m 短冲），不安排 100 米比赛性速度耐力主课。`
+      : `单招专项：100 米 + 急行跳远（助跑跳远）。每周 ${k} 练，按“速度 / 跳远 / 力量爆发 / 速度耐力${k >= 5 ? " / 技术精修" : ""}${k >= 6 ? " / 跳远分解+恢复" : ""}”课型组合，保证两项主项每周都有高质量专项课。`
+  );
   advice.push("训练按“专项技术模型 + 周期化”组织：先建立正确动作，再逐步加强度，临近考试转为“稳定发挥 + 状态调整”。");
   advice.push(...a.notes);
-  if (a.speedFocus === "accel") advice.push("本周/近期速度侧重：起跑加速补强（30m 爆发 + 反应 + 下肢快速力量）。");
-  if (a.speedFocus === "maxSpeed") advice.push("本周/近期速度侧重：途中最大速度（行进间 40-60m、放松大步、送髋）。");
-  if (a.speedFocus === "speedEnd") advice.push("本周/近期速度侧重：后程能力（120-150m 重复跑 + 放松技术）。");
-  if (a.jumpPower === "low") advice.push("跳远侧重：先补下肢爆发基础（深蹲/跳深/连续跳），再练完整技术，避免“技术再好也跳不远”。");
+  if (hasSprint && a.speedFocus === "accel") advice.push("本周/近期速度侧重：起跑加速补强（30m 爆发 + 反应 + 下肢快速力量）。");
+  if (hasSprint && a.speedFocus === "maxSpeed") advice.push("本周/近期速度侧重：途中最大速度（行进间 40-60m、放松大步、送髋）。");
+  if (hasSprint && a.speedFocus === "speedEnd") advice.push("本周/近期速度侧重：后程能力（120-150m 重复跑 + 放松技术）。");
+  if (hasJump && a.jumpPower === "low") advice.push("跳远/爆发侧重：先补下肢爆发基础（深蹲/跳深/连续跳），再练完整技术，避免“技术再好也跳不远”。");
+  if (hasSprint && a.jumpPower === "low") advice.push("百米单招提示：立定跳远偏弱说明下肢快速力量不足，力量日的跳跃/快速伸缩复合请认真完成，这直接关系起跑加速与步幅。");
   if (realWeeks === null) advice.push("未设考试日期，当前按 12 周默认周期生成；建议在档案填目标考试日期以自动倒推。");
   if (input.injuryNote) advice.push(`学生自述需注意：${input.injuryNote}。相关练习请减量或暂缓，疼痛即停。`);
 
@@ -550,18 +632,25 @@ export function buildSinglePlanDoc(input: Input): PlanDoc {
       daysPerWeek: k,
       mode: "rule",
       program: "single",
+      singleEvents: events,
       examDate: input.examDate,
-      title: `${input.name} · 单招专项（100米+急行跳远）训练计划`,
+      title: `${input.name} · ${evTitle}`,
       coachAdvice: advice,
       basis: [
-        "分项技术模型（参考美国田径协会 USATF 教练员教育思路）：100 米按“起跑反应→加速→途中最大速度→减速控制”四段，急行跳远按“助跑→起跳→腾空→落地”四环节逐项建模与打磨。",
+        (events === "sprint"
+          ? "分项技术模型（USATF 短跑思路）：按“反应起跑 → 加速（0-30m）→ 途中最大速度 → 减速控制”四段建模；跳跃（跳深/连续跳/跳箱）作为下肢快速力量手段，不占用技术课时。"
+          : events === "longJump"
+          ? "分项技术模型（USATF 跳远思路）：按“助跑 → 起跳 → 腾空 → 落地”四环节建模；短跑只用于发展助跑速度（20-60m 短冲、上板节奏），不安排 100 米速度耐力课。"
+          : "分项技术模型（参考美国田径协会 USATF 教练员教育思路）：100 米按“起跑反应→加速→途中最大速度→减速控制”四段，急行跳远按“助跑→起跳→腾空→落地”四环节逐项建模与打磨。"),
         "周期化 + 板块化：由考试日期倒推，基础期（建技术+一般力量）→强化期（力量-速度专项转化）→专项期（接近考试强度的完整技术）→赛前减量（taper）。",
         "力量-速度连续体与对比训练：最大力量（深蹲/硬拉）与快速伸缩复合（跳深/连续跳）同周安排，并用“大重量+爆发”对比组（PAP）提高转化效率。",
-        "特殊耐力（Special Endurance）：用略超主项距离的 120-200m 重复跑来发展 100 米后程能力（速度耐力），避免过早专项化堆强度。",
+        (events === "longJump"
+          ? "助跑速度与跑跳转化：用 20-60m 短冲、上板前最后三步节奏与连续跳跃发展“跑得快 + 上板准”，不依赖 100 米式的长距离速度耐力。"
+          : "特殊耐力（Special Endurance）：用略超主项距离的 120-200m 重复跑来发展 100 米后程能力（速度耐力），避免过早专项化堆强度。"),
         "RAMP 热身与整理放松：热身按提升-激活-动员-强化结构，跳跃课前加轻跳预刺激；课末记录 RPE 与身体反应，按反馈与复测数据调整（自动调节）。",
         "个体化诊断：用 30m/100m、60m/100m 分段比例与立定跳远等监控项定位短板，把训练时间投到最薄弱环节（比例阈值为经验参考，非官方标准）。",
         "渐进超负荷与超量恢复：每周量/强度增幅≤10%，速度与跳跃大强度课间隔≥48 小时，睡眠 7-9 小时——训练效果在恢复后产生。",
-        "测验-反馈闭环：阶段末测验包复测，用数据决定下一阶段侧重；考前 10-14 天做一次两项全真模拟（USATF：以赛带练、为考试做专项准备）。",
+        "测验-反馈闭环：阶段末测验包复测，用数据决定下一阶段侧重；考前 10-14 天做一次" + (events === "sprint" ? "100 米全真模拟" : events === "longJump" ? "急行跳远全真模拟" : "两项全真模拟") + "（以赛带练、为考试做专项准备）。",
       ],
     },
     diagnosis: {
@@ -577,11 +666,26 @@ export function buildSinglePlanDoc(input: Input): PlanDoc {
       "膝、踝、腰、跟腱出现疼痛立即停止相关练习并向教练报告，不要“忍痛训练”。",
       "力量训练保证动作规范与保护；高翻等爆发动作无把握时先用替代动作或轻重量。",
     ],
-    reassessment: [
-      "阶段测验包（每阶段末约 30 分钟）：30m、60m、立定跳远、100米、急行跳远，录入系统供下一周期自动调整。",
-      "专项期改为每周轮测主项：100 米与急行跳远交替丈量，看趋势而非单次波动。",
-      "连续两次测验无进步：先复查技术录像（助跑节奏/上板/途中放松）与恢复情况，其次才是加量。",
-      "考前 10-14 天做一次两项全真模拟：按考试顺序与间隔完整走流程，熟悉体力分配。",
-    ],
+    reassessment:
+      events === "sprint"
+        ? [
+            "阶段测验包（每阶段末约 30 分钟）：30m、60m、立定跳远、100米，录入系统供下一周期自动调整。",
+            "专项期每周轮测主项：30m/60m 与 100 米交替计时，看趋势而非单次波动。",
+            "连续两次测验无进步：先复查技术录像（起跑衔接/途中放松/后程）与恢复情况，其次才是加量。",
+            "考前 10-14 天做一次 100 米全真模拟：用起跑器、按考试节奏完整走流程。",
+          ]
+        : events === "longJump"
+        ? [
+            "阶段测验包（每阶段末约 30 分钟）：立定跳远、急行跳远（全程丈量）、30m，录入系统供下一周期自动调整。",
+            "专项期每周轮测主项：急行跳远全程丈量 + 立定跳远监控，看趋势而非单次波动。",
+            "连续两次测验无进步：先复查助跑节奏/上板/腾空落地录像与恢复情况，其次才是加量。",
+            "考前 10-14 天做一次急行跳远全真模拟：完整助跑丈量流程，熟悉节奏与步点。",
+          ]
+        : [
+            "阶段测验包（每阶段末约 30 分钟）：30m、60m、立定跳远、100米、急行跳远，录入系统供下一周期自动调整。",
+            "专项期改为每周轮测主项：100 米与急行跳远交替丈量，看趋势而非单次波动。",
+            "连续两次测验无进步：先复查技术录像（助跑节奏/上板/途中放松）与恢复情况，其次才是加量。",
+            "考前 10-14 天做一次两项全真模拟：按考试顺序与间隔完整走流程，熟悉体力分配。",
+          ],
   };
 }

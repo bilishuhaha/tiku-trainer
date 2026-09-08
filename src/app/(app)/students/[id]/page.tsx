@@ -8,11 +8,22 @@ import { ConfirmForm } from "@/components/forms";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import { ErrorBanner } from "@/components/error-banner";
 import { adjustPlanFromFeedbackAction, approveLeaveAction, clearAccessCodeAction, coachMarkCheckinAction, deleteScoreAction, deleteStudentAction, generateAccessCodeAction, generatePlanAction, rejectLeaveAction, setGoalAction, addScoreAction, unlockStudentAction } from "@/lib/actions";
-import { enableSingleAction, generateSinglePlanAction } from "@/lib/actions";
+import { enableSingleAction, generateSinglePlanAction, setSingleEventAction } from "@/lib/actions";
 import { EVENTS, EVENT_ORDER, ITEMS, itemLabel, itemUnit, isLowerBetter } from "@/lib/domain/items";
 import { calcAge, fmtDate, todayInputValue, weeksUntil, round1, round2 } from "@/lib/format";
 import { evaluateAttendanceDetail } from "@/lib/attendance";
 import { LOCK_THRESHOLD } from "@/lib/attendance-shared";
+
+const SINGLE_EV_LABEL: Record<string, string> = {
+  sprint: "百米（100 米）单招",
+  longJump: "急行跳远（助跑跳远）单招",
+  both: "100 米 + 急行跳远（两项都练）",
+};
+const SINGLE_EV_OPTIONS: { v: string; label: string; hint: string }[] = [
+  { v: "sprint", label: "百米", hint: "只安排 100 米专项训练（跳跃作为爆发力辅助）" },
+  { v: "longJump", label: "急行跳远", hint: "只安排急行跳远专项（短冲作为助跑速度辅助）" },
+  { v: "both", label: "两项都练", hint: "100 米 + 急行跳远同时作为主项" },
+];
 
 export const metadata = { title: "学生档案" };
 
@@ -166,39 +177,72 @@ export default async function StudentDetailPage({ params, searchParams }: { para
       <LeaveSection leaves={leaves} />
 
 
-      {/* 单招专项（100米+急行跳远）——仅教练端，学生端不显示 */}
+            {/* 单招专项计划（百米 / 急行跳远，可单选或两项都练）——仅教练端，学生端不显示 */}
       <div className="card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-emerald-600" />
-            <h2 className="font-semibold text-slate-900">单招专项计划（100米 + 急行跳远）</h2>
+            <h2 className="font-semibold text-slate-900">单招专项计划（百米 / 急行跳远）</h2>
           </div>
           <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${Number(student.singleEnabled) === 1 ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>{Number(student.singleEnabled) === 1 ? "已授权" : "未授权"}</span>
         </div>
-        <p className="mt-1 text-xs text-slate-500">仅教练端可用：学生端看不到、也不能自己生成单招计划。授权后学生只能用访问码登录查看你生成给他的计划。</p>
+        <p className="mt-1 text-xs text-slate-500">仅教练端可用：学生端看不到、也不能自己生成单招计划。可给该生选<strong>百米</strong>、选<strong>急行跳远</strong>，也可以<strong>两项都练</strong>。</p>
         {Number(student.singleEnabled) === 1 ? (
           <div className="mt-3 space-y-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs text-slate-500">已开通，可生成单招计划：</span>
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
+              <div>
+                <div className="text-xs text-slate-500">当前单招项目</div>
+                <div className="mt-0.5 text-sm font-semibold text-emerald-700">{SINGLE_EV_LABEL[(student.singleEvent ?? "both")] ?? "两项都练"}</div>
+              </div>
               <form action={enableSingleAction}><input type="hidden" name="studentId" value={id} /><input type="hidden" name="value" value="0" /><PendingSubmitButton pendingText="处理中…" className="btn btn-outline px-3 py-1 text-xs">关闭授权</PendingSubmitButton></form>
             </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+              <div className="text-xs font-semibold text-slate-700">单招项目选择（改完点“保存”，下次生成按此）</div>
+              <div className="mt-2 grid gap-1.5 text-xs text-slate-600">
+                {SINGLE_EV_OPTIONS.map((o) => (
+                  <label key={o.v} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                    <input type="radio" name="singleEvent" value={o.v} defaultChecked={((student.singleEvent ?? "both") as string) === o.v} className="mt-0.5 accent-emerald-600" />
+                    <span><span className="font-semibold text-slate-800">{o.label}</span><span className="block text-[11px] text-slate-400">{o.hint}</span></span>
+                  </label>
+                ))}
+              </div>
+              <form action={setSingleEventAction} className="mt-2">
+                <input type="hidden" name="studentId" value={id} />
+                <PendingSubmitButton pendingText="保存中…" className="btn btn-outline border-emerald-300 px-3 py-1 text-xs text-emerald-700">保存所选项目</PendingSubmitButton>
+              </form>
+            </div>
+
             <form action={generateSinglePlanAction} className="rounded-xl border border-emerald-100 bg-emerald-50/60 p-3">
               <input type="hidden" name="studentId" value={id} />
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
                 <span>每周训练：</span>
                 {[4,5,6].map((n)=>(<label key={n} className="flex cursor-pointer items-center gap-1"><input type="radio" name="daysPerWeek" value={String(n)} defaultChecked={n===6} className="accent-emerald-600" />{n} 练</label>))}
                 {hasLlm && (<label className="flex cursor-pointer items-center gap-1"><input type="checkbox" name="useLlm" value="1" className="accent-emerald-600" /> AI 润色</label>)}
-                <PendingSubmitButton pendingText="生成中…" className="btn btn-dark text-xs">生成单招计划</PendingSubmitButton>
+                <PendingSubmitButton pendingText="生成中…" className="btn btn-dark text-xs">按当前项目生成单招计划</PendingSubmitButton>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400">内容围绕 100 米与急行跳远（助跑跳远），参考美国田径协会（USATF）等专项训练理论细化：分项技术模型 + 精细周期分期 + 个人短板诊断 + 测验反馈闭环；同样支持学生每日打卡反馈并自动调整。</p>
+              <p className="mt-2 text-[11px] text-slate-400">按“当前单招项目（{SINGLE_EV_LABEL[(student.singleEvent ?? "both")] ?? "两项都练"}）”生成对应专项计划：参考美国田径协会（USATF）专项训练理论，分项技术模型 + 精细周期分期 + 个人短板诊断 + 测验反馈闭环；支持学生每日打卡反馈并自动调整。改项目请先点上方“保存所选项目”。</p>
             </form>
           </div>
         ) : (
-          <form action={enableSingleAction} className="mt-3"><input type="hidden" name="studentId" value={id} /><input type="hidden" name="value" value="1" /><PendingSubmitButton pendingText="开通中…" className="btn btn-primary text-xs">给该生开通单招</PendingSubmitButton></form>
+          <form action={enableSingleAction} className="mt-3 rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+            <input type="hidden" name="studentId" value={id} />
+            <input type="hidden" name="value" value="1" />
+            <div className="text-xs font-semibold text-slate-700">先选择该生的单招项目，再开通：</div>
+            <div className="mt-2 grid gap-1.5 text-xs text-slate-600">
+              {SINGLE_EV_OPTIONS.map((o) => (
+                <label key={o.v} className="flex cursor-pointer items-start gap-2 rounded-lg border border-slate-200 bg-white px-3 py-2">
+                  <input type="radio" name="singleEvent" value={o.v} defaultChecked={(student.singleEvent ?? "both") === o.v} className="mt-0.5 accent-emerald-600" />
+                  <span><span className="font-semibold text-slate-800">{o.label}</span><span className="block text-[11px] text-slate-400">{o.hint}</span></span>
+                </label>
+              ))}
+            </div>
+            <PendingSubmitButton pendingText="开通中…" className="btn btn-primary mt-3 text-sm">开通单招（按所选项目生成）</PendingSubmitButton>
+          </form>
         )}
       </div>
 
-      {/* 学生个人版 */}
+{/* 学生个人版 */}
       <div className="card p-5">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2">
