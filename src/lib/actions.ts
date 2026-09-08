@@ -30,6 +30,15 @@ function errTo(url: string, msg: string): never {
   redirect(`${url}${url.includes("?") ? "&" : "?"}error=${encodeURIComponent(msg)}`);
 }
 
+
+/** 判断一份计划是否为单招专项计划（按 structure.meta.program） */
+function planIsSingle(plan: { structure: string }): boolean {
+  try {
+    const m = (JSON.parse(plan.structure) as { meta?: { program?: string } }).meta;
+    return m?.program === "single";
+  } catch { return false; }
+}
+
 // ---------- 认证 ----------
 export async function loginAction(fd: FormData): Promise<void> {
   const email = str(fd, "email").trim();
@@ -142,6 +151,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
   const studentId = str(fd, "studentId");
   const student = await findStudent(studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
+  if (Number(student.singleEnabled) === 1) return errTo(`/students/${studentId}`, "该生已确定单招：请用上方「单招专项计划」生成，统考计划生成已停用");
   const daysRaw = Number(str(fd, "daysPerWeek") || "6");
   const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
   const hadPlan = (await listPlans(studentId)).length > 0;
@@ -198,6 +208,11 @@ export async function confirmPlanAction(fd: FormData): Promise<void> {
   const plan = await findPlan(id, user.id);
   if (!plan) return errTo("/students", "计划不存在");
   await updatePlan(id, user.id, { status: "confirmed" });
+  // 若是单招计划：顺手清理该生残留的统考（非单招）计划，避免学生端仍显示旧统考计划
+  if (planIsSingle(plan)) {
+    const leftovers = (await listPlans(plan.studentId)).filter((p) => p.id !== plan.id && !planIsSingle(p));
+    for (const p of leftovers) await deletePlan(p.id, user.id);
+  }
   redirect(`/plans/${id}`);
 }
 
@@ -345,6 +360,7 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
   if (!plan) return errTo("/students", "计划不存在");
   const student = await findStudent(plan.studentId, user.id);
   if (!student) return errTo("/students", "学生不存在");
+  if (Number(student.singleEnabled) === 1 && !planIsSingle(plan)) return errTo(`/students/${plan.studentId}`, "该生已确定单招：请调整其单招专项计划，统考计划已停用");
 
   const prev = JSON.parse(plan.structure) as { meta?: { program?: string } };
   const isSingle = prev.meta?.program === "single";
@@ -483,6 +499,13 @@ async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wan
 
   // 汇总最近训练反馈，作为“自动调整依据”写进计划
   const fb = await listFeedbackByStudent(student.id, 40);
+  // —— 依据近期反馈判定是否需要“恢复优先”（真正影响课表，不只是文字）——
+  const recentFb = fb.slice(0, 10);
+  const recentFeels = recentFb.map((f) => f.feel).filter((x): x is number => x !== null);
+  const avgRecentFeel = recentFeels.length ? recentFeels.reduce((a, b) => a + b, 0) / recentFeels.length : null;
+  const highFeelCount = recentFeels.filter((v) => v >= 4).length;
+  const riskSore = new Set(recentFb.map((f) => f.soreness).filter((s): s is string => !!s && s !== "无" && s !== "正常肌肉酸痛"));
+  const fatigueRecover = (avgRecentFeel !== null && avgRecentFeel >= 3.5) || highFeelCount >= 1 || riskSore.size > 0;
   if (fb.length) {
     const feels = fb.map((f) => f.feel).filter((x): x is number => x !== null);
     const avg = feels.length ? (feels.reduce((a, b) => a + b, 0) / feels.length).toFixed(1) : null;
@@ -507,6 +530,21 @@ async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wan
       doc.meta.coachAdvice = enhanced.coachAdvice;
       doc.meta.basis = enhanced.basis;
     }
+  }
+  // —— 反馈偏累/不适 → 真正下调：首阶段每日标记“恢复优先”并给出减量执行提示 ——
+  if (fatigueRecover && doc.periods.length) {
+    const first = doc.periods[0];
+    for (const d of first.weeklySchedule) {
+      d.title = "恢复优先 · " + d.title;
+      d.techNotes = [
+        "⚠️ 依据近期反馈（偏累/有不适）自动调整：本周按“恢复优先”执行——每项组数可减 1-2 组、强度取下限，疼痛即停；感觉恢复后请让教练/自己重新生成，恢复正常强度。",
+        ...(d.techNotes ?? []),
+      ];
+    }
+    doc.meta.coachAdvice.unshift("⚠️ 本次为“恢复优先”调整：近期反馈偏累/有不适，首阶段每日已标记恢复优先并提示减量，先保证恢复再逐步加量。");
+    if (Array.isArray(doc.meta.basis)) doc.meta.basis.unshift("依据反馈自动触发“恢复优先”：疲劳/不适期先减量恢复，避免带疲劳或带伤训练。");
+  } else if (avgRecentFeel !== null && avgRecentFeel <= 1.8 && highFeelCount === 0 && riskSore.size === 0) {
+    doc.meta.coachAdvice.unshift("近期反馈整体轻松：可在动作标准前提下按强度/量上限执行；需要加量时每周增幅仍≤10%，建议由教练评估后微调。");
   }
   return doc;
 }
@@ -552,6 +590,13 @@ export async function adjustMyPlanFromFeedbackAction(fd: FormData): Promise<void
   if (prev.meta?.program === "single") return errTo("/s", "单招专项计划暂不支持学生自助调整，需要调整请联系教练");
 
   const fb = await listFeedbackByStudent(student.id, 40);
+  // —— 依据近期反馈判定是否需要“恢复优先”（真正影响课表，不只是文字）——
+  const recentFb = fb.slice(0, 10);
+  const recentFeels = recentFb.map((f) => f.feel).filter((x): x is number => x !== null);
+  const avgRecentFeel = recentFeels.length ? recentFeels.reduce((a, b) => a + b, 0) / recentFeels.length : null;
+  const highFeelCount = recentFeels.filter((v) => v >= 4).length;
+  const riskSore = new Set(recentFb.map((f) => f.soreness).filter((s): s is string => !!s && s !== "无" && s !== "正常肌肉酸痛"));
+  const fatigueRecover = (avgRecentFeel !== null && avgRecentFeel >= 3.5) || highFeelCount >= 1 || riskSore.size > 0;
   if (!fb.length) return errTo("/s", "你还没有提交过训练反馈。先在下方「练完写个反馈」提交一次，系统才能据此自动调整计划");
 
   // 防重复：上次“学生自助调整”之后没有新反馈时，不再空转重生成
@@ -806,14 +851,18 @@ export async function generateSinglePlanAction(fd: FormData): Promise<void> {
     studentId: student.id,
     coachId: user.id,
     title: doc.meta.title,
-    status: "draft",
+    status: "confirmed",
     goalSummary: doc.meta.coachAdvice.join("\n"),
     diagnosis: JSON.stringify(doc.diagnosis),
     structure: JSON.stringify(doc),
-    coachNote: "单招专项计划（100米+急行跳远）· 请核对后确认。",
+    coachNote: "单招专项计划（100米+急行跳远）· 已自动定稿并替换统考计划，学生端立即可见；如需调整请用「按最新状态重新生成」。",
     aiMeta: JSON.stringify({ mode: doc.meta.mode, program: "single", daysPerWeek, generatedAt: doc.meta.generatedAt }),
     examDate: student.examDate,
     startDate: localDateKey(),
   });
+  // 该生已确定单招：替换删除原有统考计划（保留单招计划），并通知学生端计划已更新
+  const others = (await listPlans(student.id)).filter((p) => p.id !== plan.id && !planIsSingle(p));
+  for (const p of others) await deletePlan(p.id, user.id);
+  await bumpPlanNotice(plan.id, user.id);
   redirect(`/plans/${plan.id}`);
 }

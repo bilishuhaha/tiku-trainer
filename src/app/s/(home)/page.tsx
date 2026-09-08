@@ -34,6 +34,13 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
     listLeavesByStudent(me.id, 6),
   ]);
   if (!student) redirect("/s/login");
+  // 解析当前计划：单招判断 + 学生端可见的“本次调整/教练要点”
+  const activeDoc = plan ? (JSON.parse(plan.structure) as PlanDoc) : null;
+  const planProgram = activeDoc?.meta?.program ?? (plan ? "gaokao" : null);
+  const notableAdvice = activeDoc
+    ? activeDoc.meta.coachAdvice.filter((l) => l.startsWith("【") || l.startsWith("⚠️") || l.startsWith("✅") || l.startsWith("教练本次") || l.includes("复测"))
+    : [];
+
 
   const today = new Date();
   const todayWd = weekdayOf(today);
@@ -79,7 +86,29 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
         <p className="mt-0.5 text-sm text-slate-500">{dateText} · {todayLabel}</p>
       </div>
 
-      {goals.length > 0 && (
+      {/* 单招考生提示：明确考试项目 */}
+      {planProgram === "single" && plan && (
+        <div className="rounded-xl border border-violet-200 bg-violet-50 px-4 py-3">
+          <div className="text-sm font-semibold text-violet-800">🏅 你是「单招专项」考生</div>
+          <p className="mt-0.5 text-xs leading-relaxed text-violet-700">考试项目：<b>100 米 + 急行跳远（助跑跳远）</b>。系统只围绕这两项做专项训练安排，不含铅球/三级跳。</p>
+        </div>
+      )}
+
+
+      {/* 本次调整/教练要点（反馈依据、复测趋势等，让学生看到“计划为什么变了”） */}
+      {notableAdvice.length > 0 && (
+        <div className="rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3">
+          <div className="text-xs font-semibold text-sky-800">📋 本次计划说明 / 自动调整</div>
+          <ul className="mt-1 space-y-1">
+            {notableAdvice.slice(0, 4).map((l, i) => (
+              <li key={i} className="text-xs leading-relaxed text-sky-800/90">{l}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+
+      {planProgram !== "single" && goals.length > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {EVENT_ORDER.map((ev) => {
             const g = goals.find((x) => x.event === ev);
@@ -100,7 +129,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
       )}
 
       {/* 广东术科算分器（学生自测） */}
-      <ScoreCalculator />
+      {planProgram !== "single" && <ScoreCalculator />}
 
       {!plan ? (
         <NoPlanCard />
