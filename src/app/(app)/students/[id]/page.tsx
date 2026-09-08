@@ -190,7 +190,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
                 {hasLlm && (<label className="flex cursor-pointer items-center gap-1"><input type="checkbox" name="useLlm" value="1" className="accent-emerald-600" /> AI 润色</label>)}
                 <PendingSubmitButton pendingText="生成中…" className="btn btn-dark text-xs">生成单招计划</PendingSubmitButton>
               </div>
-              <p className="mt-2 text-[11px] text-slate-400">内容围绕 100 米与急行跳远（助跑跳远），按周期理论生成；同样支持学生每日打卡反馈并自动调整。</p>
+              <p className="mt-2 text-[11px] text-slate-400">内容围绕 100 米与急行跳远（助跑跳远），参考美国田径协会（USATF）等专项训练理论细化：分项技术模型 + 精细周期分期 + 个人短板诊断 + 测验反馈闭环；同样支持学生每日打卡反馈并自动调整。</p>
             </form>
           </div>
         ) : (
