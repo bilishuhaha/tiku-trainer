@@ -10,7 +10,7 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanRequest } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
-import { setStudentAutoEnrolled, setUserAutoEnroll } from "./repo";
+import { setStudentAutoEnrolled, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
   deleteCheckin, deletePlan, deleteScore, deleteStudent,
@@ -638,11 +638,11 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
       studentId: student.id,
       coachId,
       title: doc.meta.title,
-      status: "draft",
+      status: coach.autoConfirmPlan === 1 ? "confirmed" : "draft",
       goalSummary: doc.meta.coachAdvice.join("\n"),
       diagnosis: JSON.stringify(doc.diagnosis),
       structure: JSON.stringify(doc),
-      coachNote: "新生评估表自动建档生成，请教练核对后确认。",
+      coachNote: coach.autoConfirmPlan === 1 ? "新生评估表自动建档并自动定稿生成。" : "新生评估表自动建档生成，请教练核对后确认。",
       aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek: 6, generatedAt: doc.meta.generatedAt, by: "auto-enroll" }),
       examDate: student.examDate,
       startDate: localDateKey(),
@@ -742,3 +742,13 @@ export async function toggleAutoEnrollAction(fd: FormData): Promise<void> {
   redirect("/students");
 }
 
+
+// 教练：切换自动生成的计划是否自动定稿
+export async function toggleAutoConfirmAction(fd: FormData): Promise<void> {
+  const user = await requireUser();
+  const raw = str(fd, "value").trim();
+  const next = raw === "1" ? 1 : raw === "0" ? 0 : null;
+  if (next === null) return errTo("/students", "参数无效");
+  await setUserAutoConfirm(user.id, next);
+  redirect("/students");
+}

@@ -217,6 +217,7 @@ async function ensureSqliteColumns(instance: Db) {
   await addColumnIfMissing("students", "access_code", "ALTER TABLE students ADD COLUMN access_code TEXT");
   await addColumnIfMissing("students", "weekdays", "ALTER TABLE students ADD COLUMN weekdays TEXT");
   await addColumnIfMissing("users", "auto_enroll", "ALTER TABLE users ADD COLUMN auto_enroll INTEGER NOT NULL DEFAULT 1");
+  await addColumnIfMissing("users", "auto_confirm_plan", "ALTER TABLE users ADD COLUMN auto_confirm_plan INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("students", "pending", "ALTER TABLE students ADD COLUMN pending INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("students", "contact", "ALTER TABLE students ADD COLUMN contact TEXT");
   await addColumnIfMissing("students", "auto_enrolled", "ALTER TABLE students ADD COLUMN auto_enrolled INTEGER NOT NULL DEFAULT 0");
@@ -245,6 +246,7 @@ export async function initDatabaseForTests(): Promise<void> {
 export function nowIso(): string {
   return new Date().toISOString();
 }
+
 
 
 

@@ -1,7 +1,7 @@
 import { getDb, nowIso } from "./db";
 import { randomUUID } from "node:crypto";
 
-export interface UserRow { id: string; email: string; passwordHash: string; name: string; role: string; autoEnroll: number; createdAt: string; }
+export interface UserRow { id: string; email: string; passwordHash: string; name: string; role: string; autoEnroll: number; autoConfirmPlan: number; createdAt: string; }
 export interface StudentRow {
   id: string; coachId: string; name: string; gender: string;
   birthDate: string | null; height: number | null; weight: number | null;
@@ -21,7 +21,7 @@ export interface PlanRow {
 type Row = Record<string, unknown>;
 
 function mapUser(r: Row): UserRow {
-  return { id: r.id as string, email: r.email as string, passwordHash: r.password_hash as string, name: r.name as string, role: r.role as string, autoEnroll: Number(r.auto_enroll ?? 1), createdAt: r.created_at as string };
+  return { id: r.id as string, email: r.email as string, passwordHash: r.password_hash as string, name: r.name as string, role: r.role as string, autoEnroll: Number(r.auto_enroll ?? 1), autoConfirmPlan: Number(r.auto_confirm_plan ?? 0), createdAt: r.created_at as string };
 }
 function mapStudent(r: Row): StudentRow {
   return {
@@ -65,6 +65,10 @@ export async function findUserById(id: string): Promise<UserRow | null> {
 export async function setUserAutoEnroll(id: string, auto: number): Promise<void> {
   await getDb().execute({ sql: "UPDATE users SET auto_enroll=? WHERE id=?", args: [auto ? 1 : 0, id] });
 }
+export async function setUserAutoConfirm(id: string, v: number): Promise<void> {
+  await getDb().execute({ sql: "UPDATE users SET auto_confirm_plan=? WHERE id=?", args: [v ? 1 : 0, id] });
+}
+
 
 export async function createUser(email: string, passwordHash: string, name: string): Promise<UserRow> {
   const id = randomUUID();

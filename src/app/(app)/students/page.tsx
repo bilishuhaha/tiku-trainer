@@ -8,7 +8,7 @@ import { fmtDate, weeksUntil } from "@/lib/format";
 import { OkBanner } from "@/components/error-banner";
 import CopyLinkButton from "@/components/copy-link-button";
 import PendingSubmitButton from "@/components/pending-submit-button";
-import { toggleAutoEnrollAction, unlockStudentAction } from "@/lib/actions";
+import { toggleAutoConfirmAction, toggleAutoEnrollAction, unlockStudentAction } from "@/lib/actions";
 import { LOCK_THRESHOLD } from "@/lib/attendance-shared";
 
 export const metadata: Metadata = { title: "学生管理" };
@@ -32,6 +32,7 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
   const enrollUrl = host ? `${proto}://${host}/s/join?c=${user.id}` : "";
   const fullUser = await findUserById(user.id);
   const autoMode = Number(fullUser?.autoEnroll ?? 1) === 1;
+  const autoConfirm = Number(fullUser?.autoConfirmPlan ?? 0) === 1;
 
 
   return (
@@ -76,6 +77,18 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
           <PendingSubmitButton pendingText="切换中…" className="btn btn-outline px-3 py-1 text-xs">{autoMode ? "改回：需教练确认" : "开启：全自动"}</PendingSubmitButton>
         </form>
         <span className="min-w-0 flex-1 text-[11px] text-slate-400">全自动 = 学生提交评估表后，系统自动建档+生成访问码+自动生成训练计划，并直接进入学生端。</span>
+      </div>
+
+      {/* 自动定稿开关 */}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl border border-slate-200 bg-white px-4 py-2.5">
+        <span className={`rounded-full px-2.5 py-1 text-xs font-semibold ${autoConfirm ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600"}`}>
+          {autoConfirm ? "自动生成计划：自动定稿（已确认）" : "自动生成计划：保持草稿待我确认"}
+        </span>
+        <form action={toggleAutoConfirmAction}>
+          <input type="hidden" name="value" value={autoConfirm ? "0" : "1"} />
+          <PendingSubmitButton pendingText="切换中…" className="btn btn-outline px-3 py-1 text-xs">{autoConfirm ? "改为：保持草稿" : "改为：自动定稿"}</PendingSubmitButton>
+        </form>
+        <span className="min-w-0 flex-1 text-[11px] text-slate-400">开启后：自动报名生成的计划会直接定稿（学生端显示已确认）；关闭则保持草稿，由你核对后确认。</span>
       </div>
 
       <OkBanner ok={
