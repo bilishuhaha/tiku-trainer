@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { CheckCircle2, Flame, BedDouble, Target, CalendarDays, ChevronDown, MessageSquare, Lock } from "lucide-react";
-import { requireStudent } from "@/lib/auth";
+import { requireStudent, destroyStudentSession } from "@/lib/auth";
 import { findActivePlan, findStudentById, listApprovedLeaveDates, listCheckins, listFeedbackByStudent, listGoals, listLeavesByStudent, syncAttendance } from "@/lib/repo";
 import { adjustMyPlanFromFeedbackAction, setMyWeekdaysAction, studentLeaveAction, submitFeedbackAction } from "@/lib/actions";
 import { ErrorBanner, OkBanner } from "@/components/error-banner";
@@ -33,7 +33,11 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
     listApprovedLeaveDates(me.id),
     listLeavesByStudent(me.id, 6),
   ]);
-  if (!student) redirect("/s/login");
+  if (!student || !student.accessCode) {
+    // 访问码已被教练收回/学生不存在：立即销毁会话并回登录页
+    await destroyStudentSession();
+    redirect("/s/login");
+  }
 
   // 计划类型：single=单招专项（百米/急行跳远/两项），否则按统考（术科）展示
   const planMeta = plan
@@ -45,7 +49,8 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   const today = new Date();
   const todayWd = weekdayOf(today);
   const todayLabel = WEEKDAY_LABELS[todayWd - 1];
-  const dateText = `${today.getMonth() + 1}月${today.getDate()}日`;
+  const _cnKey = localDateKey(today);
+  const dateText = `${Number(_cnKey.slice(5, 7))}月${Number(_cnKey.slice(8, 10))}日`;
 
   // ===== 考勤：连续未打卡计数 / 封锁 =====
   let missed = 0;

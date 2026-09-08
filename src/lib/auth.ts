@@ -2,7 +2,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
-import { findUserByEmail, findUserById, type UserRow } from "./repo";
+import { findUserByEmail, findUserById, findStudentById, type UserRow } from "./repo";
 
 const COOKIE = "tk_session";
 const MAX_AGE_SEC = 60 * 60 * 24 * 30; // 30 天
@@ -110,5 +110,11 @@ export async function getStudentSession(): Promise<StudentSession | null> {
 export async function requireStudent(): Promise<StudentSession> {
   const s = await getStudentSession();
   if (!s) redirect("/s/login");
+  // 校验学生仍存在且访问码未被教练收回：收回后旧会话立即失效，需重新找教练要访问码
+  const row = await findStudentById(s.id);
+  if (!row || !row.accessCode) {
+    await destroyStudentSession();
+    redirect("/s/login");
+  }
   return s;
 }

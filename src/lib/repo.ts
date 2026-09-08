@@ -1,5 +1,6 @@
 import { getDb, nowIso } from "./db";
 import { randomUUID } from "node:crypto";
+import { localDateKey } from "./format";
 
 export interface UserRow { id: string; email: string; passwordHash: string; name: string; role: string; autoEnroll: number; autoConfirmPlan: number; createdAt: string; }
 export interface StudentRow {
@@ -15,7 +16,7 @@ export interface ScoreRow { id: string; studentId: string; date: string; item: s
 export interface PlanRow {
   id: string; studentId: string; coachId: string; title: string; status: string;
   goalSummary: string | null; diagnosis: string | null; structure: string; coachNote: string | null;
-  aiMeta: string | null; examDate: string | null; startDate: string | null; noticeRev: number; seenRev: number; createdAt: string; updatedAt: string;
+  aiMeta: string | null; examDate: string | null; startDate: string | null; noticeRev: number; seenRev: number; attendanceReset: string | null; createdAt: string; updatedAt: string;
 }
 
 type Row = Record<string, unknown>;
@@ -48,7 +49,7 @@ function mapPlan(r: Row): PlanRow {
     status: r.status as string, goalSummary: (r.goal_summary as string) ?? null, diagnosis: (r.diagnosis as string) ?? null,
     structure: r.structure as string, coachNote: (r.coach_note as string) ?? null, aiMeta: (r.ai_meta as string) ?? null,
     examDate: (r.exam_date as string) ?? null, startDate: (r.start_date as string) ?? null,
-    noticeRev: Number(r.notice_rev ?? 0), seenRev: Number(r.seen_rev ?? 0),
+    noticeRev: Number(r.notice_rev ?? 0), seenRev: Number(r.seen_rev ?? 0), attendanceReset: (r.attendance_reset as string) ?? null,
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
 }
@@ -385,14 +386,15 @@ export async function syncAttendance(studentId: string, missedCount: number, loc
 
 /** 教练解锁：清除封锁与缺勤计数，并把该生最新计划起点重置到今天（避免历史缺勤再次触发封锁） */
 export async function unlockAttendance(studentId: string, coachId: string): Promise<void> {
+  const today = localDateKey();
   await getDb().execute({
     sql: "UPDATE students SET locked=0, missed_count=0, updated_at=? WHERE id=? AND coach_id=?",
     args: [nowIso(), studentId, coachId],
   });
+  // 只重置“考勤统计起点”，不改计划 start_date（start_date 决定训练周期第几周，改了会让学生退回第 1 周）
   await getDb().execute({
-    sql: `UPDATE plans SET start_date=substr(?,1,10) WHERE student_id=? AND coach_id=? AND id=
-          (SELECT id FROM plans WHERE student_id=? AND coach_id=? ORDER BY created_at DESC LIMIT 1)`,
-    args: [nowIso(), studentId, coachId, studentId, coachId],
+    sql: "UPDATE plans SET attendance_reset=?, updated_at=? WHERE student_id=? AND coach_id=? AND status='confirmed'",
+    args: [today, nowIso(), studentId, coachId],
   });
 }
 // ================= 训练反馈（学生 -> 教练） =================

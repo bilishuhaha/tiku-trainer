@@ -228,6 +228,7 @@ async function ensureSqliteColumns(instance: Db) {
   await addColumnIfMissing("plans", "start_date", "ALTER TABLE plans ADD COLUMN start_date TEXT");
   await addColumnIfMissing("plans", "notice_rev", "ALTER TABLE plans ADD COLUMN notice_rev INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("plans", "seen_rev", "ALTER TABLE plans ADD COLUMN seen_rev INTEGER NOT NULL DEFAULT 0");
+  await addColumnIfMissing("plans", "attendance_reset", "ALTER TABLE plans ADD COLUMN attendance_reset TEXT");
 }
 
 export function getDb(): Db {

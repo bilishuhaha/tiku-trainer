@@ -9,6 +9,7 @@ export { LOCK_THRESHOLD, MUST_READ } from "./attendance-shared";
 interface PlanLike {
   startDate: string | null;
   createdAt: string;
+  attendanceReset?: string | null;
 }
 
 /** 纯计算：从计划开始到今天，连续“训练日”未打卡次数（已批准的请假日视同出勤，不计缺勤） */
@@ -23,7 +24,7 @@ export function computeMissed(
   if (!chosen.length) return 0;
   const set = new Set(chosen);
   const excused = approvedLeaveDates ?? new Set<string>();
-  const startKey = plan.startDate ?? plan.createdAt.slice(0, 10);
+  const startKey = plan.attendanceReset ?? plan.startDate ?? plan.createdAt.slice(0, 10);
   const todayKey = localDateKey(today);
   let streak = 0;
   let cursor = startKey;

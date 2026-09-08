@@ -4,9 +4,10 @@ import { localDateKey } from "./format";
 export const WEEKDAY_LABELS = ["周一", "周二", "周三", "周四", "周五", "周六", "周日"];
 export const WEEKDAY_LETTERS = ["一", "二", "三", "四", "五", "六", "日"];
 
-/** 返回今天是周几（周一=1 … 周日=7） */
+/** 返回“日期所在的日历周几”（周一=1 … 周日=7），按中国日历日期计算，不受服务器时区影响 */
 export function weekdayOf(d: Date = new Date()): number {
-  const wd = d.getDay(); // 0=周日
+  const key = localDateKey(d);
+  const wd = new Date(key + "T12:00:00Z").getUTCDay(); // 0=周日
   return wd === 0 ? 7 : wd;
 }
 
@@ -37,12 +38,11 @@ export function toWeekdayCsv(list: number[]): string {
   return [...list].sort((a, b) => a - b).join(",");
 }
 
-/** 本周一日期 */
+/** 本周一日期（按中国日历周计算） */
 export function weekStartKey(today: Date = new Date()): string {
-  const d = new Date(today);
-  const diff = weekdayOf(today) - 1;
-  d.setDate(d.getDate() - diff);
-  return localDateKey(d);
+  const key = localDateKey(today);
+  const diff = weekdayOf(today) - 1; // 周几 1..7 -> 距周一的天数
+  return dateKeyAdd(key, -diff);
 }
 
 export function dateKeyAdd(key: string, add: number): string {
