@@ -11,6 +11,7 @@ import PlanUpdatedBanner from "@/components/plan-updated-banner";
 import PendingSubmitButton from "@/components/pending-submit-button";
 import ScoreCalculator from "@/components/score-calculator";
 import PlanDisclaimerModal from "@/components/plan-disclaimer";
+import AccessCodeModal from "@/components/access-code-modal";
 import { EVENTS, EVENT_ORDER, itemUnit } from "@/lib/domain/items";
 import type { PlanDoc, DayDoc, BlockDoc } from "@/lib/domain/types";
 import { localDateKey, weeksUntil } from "@/lib/format";
@@ -70,8 +71,9 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
   return (
     <div className="space-y-4">
       <PlanDisclaimerModal />
+      {ok === "enrolled" && student.accessCode && <AccessCodeModal code={student.accessCode} name={student.name} />}
       <ErrorBanner error={error} />
-      <OkBanner ok={ok === "adjusted" ? "已根据你的反馈重新生成了训练计划 ✓ 本周安排已更新（若强度仍不合适，请继续提交反馈）" : ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : ok === "enrolled" ? `🎉 已自动为你开通训练！你的访问码：${student.accessCode ?? "（见档案）"}（请保存，下次可用它登录）。档案与第一版训练计划都已自动生成（教练那边也能看到），选好每周训练日即可开始！` : null} />
+      <OkBanner ok={ok === "adjusted" ? "已根据你的反馈重新生成了训练计划 ✓ 本周安排已更新（若强度仍不合适，请继续提交反馈）" : ok === "fb" ? "反馈已保存 ✓ 教练会看到，并据此调整你的计划" : ok === "leave" ? "请假已提交，教练批准后当天不算缺勤 ✓" : ok === "enrolled" ? "🎉 已自动为你开通训练！访问码已在弹窗中显示（若已关闭，见档案），请先复制保存；档案与第一版训练计划都已自动生成，选好每周训练日即可开始！" : null} />
 
 
       {/* 缺勤警告弹窗（第 1/2 次） */}
