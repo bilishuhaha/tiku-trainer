@@ -3,7 +3,7 @@ import Link from "next/link";
 import { headers } from "next/headers";
 import { Plus, ChevronRight, Inbox, UserRoundCheck, Lock, Unlock } from "lucide-react";
 import { requireUser } from "@/lib/auth";
-import { findUserById, listDraftStudentIdsByCoach, listPendingStudents, listStudents, countPlansByCoach } from "@/lib/repo";
+import { findUserById, listDraftStudentIdsByCoach, listPendingStudents, listStudents, countPlansByCoach, listTrainingStatsByCoach } from "@/lib/repo";
 import { fmtDate, weeksUntil } from "@/lib/format";
 import { OkBanner } from "@/components/error-banner";
 import CopyLinkButton from "@/components/copy-link-button";
@@ -16,11 +16,12 @@ export const metadata: Metadata = { title: "学生管理" };
 export default async function StudentsPage({ searchParams }: { searchParams: Promise<{ ok?: string }> }) {
   const { ok } = await searchParams;
   const user = await requireUser();
-  const [students, pending, planCounts, draftIdsRaw] = await Promise.all([
+  const [students, pending, planCounts, draftIdsRaw, trainStats] = await Promise.all([
     listStudents(user.id),
     listPendingStudents(user.id),
     countPlansByCoach(user.id),
     listDraftStudentIdsByCoach(user.id),
+    listTrainingStatsByCoach(user.id),
   ]);
   const counts = new Map<string, number>(Object.entries(planCounts));
   const locked = students.filter((s) => Number(s.locked) === 1);
@@ -170,10 +171,13 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
                     {s.trainingYears !== null && s.trainingYears !== undefined && (
                       <span className="text-xs text-slate-400">训龄 {s.trainingYears} 年</span>
                     )}
+                    <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-100">
+                      {trainStats[s.id]?.daysPerWeek ? `每周 ${trainStats[s.id].daysPerWeek} 练` : "未排计划"}
+                    </span>
                     {s.contact && <span className="truncate text-xs text-slate-400">📞 {s.contact}</span>}
                   </div>
                   <div className="mt-1 text-xs text-slate-500">
-                    考试：{fmtDate(s.examDate)} · {w !== null ? `${w} 周后` : "未设日期"} · 计划 {counts.get(s.id) ?? 0} 份
+                    考试：{fmtDate(s.examDate)} · {w !== null ? `${w} 周后` : "未设日期"} · 计划 {counts.get(s.id) ?? 0} 份 · 已打卡 {trainStats[s.id]?.checkedDays ?? 0} 天
                   </div>
                 </div>
                 <ChevronRight className="h-5 w-5 shrink-0 text-slate-300 group-hover:text-emerald-500" />

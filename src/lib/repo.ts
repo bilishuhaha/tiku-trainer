@@ -85,6 +85,34 @@ export async function listStudents(coachId: string): Promise<StudentRow[]> {
   const rs = await getDb().execute({ sql: "SELECT * FROM students WHERE coach_id = ? AND (pending IS NULL OR pending = 0) ORDER BY exam_date IS NULL, exam_date ASC, name ASC", args: [coachId] });
   return rs.rows.map((r) => mapStudent(r as Row));
 }
+/** 学生列表批量统计：每周训练天数（取最新计划的 daysPerWeek）+ 累计已打卡训练天数（去重日期） */
+export async function listTrainingStatsByCoach(coachId: string): Promise<Record<string, { daysPerWeek: number | null; checkedDays: number }>> {
+  const out: Record<string, { daysPerWeek: number | null; checkedDays: number }> = {};
+  const plans = await getDb().execute({
+    sql: "SELECT p.student_id, p.structure, p.created_at FROM plans p JOIN students s ON s.id=p.student_id WHERE s.coach_id=? ORDER BY p.created_at ASC",
+    args: [coachId],
+  });
+  for (const row of plans.rows as Row[]) {
+    const sid = row.student_id as string;
+    let dpw: number | null = null;
+    try {
+      const meta = (JSON.parse((row.structure as string) || "{}") as { meta?: { daysPerWeek?: number } }).meta;
+      dpw = typeof meta?.daysPerWeek === "number" ? meta.daysPerWeek : null;
+    } catch { /* 结构异常忽略 */ }
+    out[sid] = { daysPerWeek: dpw, checkedDays: out[sid]?.checkedDays ?? 0 };
+  }
+  const chk = await getDb().execute({
+    sql: "SELECT c.student_id, COUNT(DISTINCT c.date) AS d FROM checkins c JOIN students s ON s.id=c.student_id WHERE s.coach_id=? GROUP BY c.student_id",
+    args: [coachId],
+  });
+  for (const row of chk.rows as Row[]) {
+    const sid = row.student_id as string;
+    if (!out[sid]) out[sid] = { daysPerWeek: null, checkedDays: 0 };
+    out[sid].checkedDays = Number(row.d);
+  }
+  return out;
+}
+
 /** 每个学生已生成计划的数量（一次查询，避免学生列表 N+1 慢查询） */
 export async function countPlansByCoach(coachId: string): Promise<Record<string, number>> {
   const rs = await getDb().execute({
