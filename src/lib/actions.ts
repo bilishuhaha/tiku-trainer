@@ -400,8 +400,11 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
   const prev = JSON.parse(plan.structure) as { meta?: { program?: string; singleEvents?: SingleEvents } };
   const isSingle = prev.meta?.program === "single";
 
+  // 教练可在“重新生成”时改每周训练天数（3/4/5/6），不填则沿用原计划
+  const dRaw = Number(str(fd, "daysPerWeek"));
+  const overrideDays = dRaw === 3 || dRaw === 4 || dRaw === 5 || dRaw === 6 ? dRaw : undefined;
   // 复用统一重建逻辑：按最新成绩/反馈重建，单招专项走单招生成器，统考走标准生成器
-  const doc = await rebuildDocFromLatestState(student, plan, str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY);
+  const doc = await rebuildDocFromLatestState(student, plan, str(fd, "useLlm") === "1" && !!process.env.OPENAI_API_KEY, overrideDays);
   const note = str(fd, "statusNote").trim();
   if (note) doc.meta.coachAdvice.unshift(`教练本次更新说明：${note}`);
 
@@ -415,6 +418,14 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
     startDate: localDateKey(),
     examDate: student.examDate,
   });
+  // 改过每周天数时：学生原有训练日数量对不上，重置为对应的默认训练日，并从今天重新计算考勤
+  if (overrideDays) {
+    const cur = (student.weekdays ?? "").split(",").map((x) => x.trim()).filter(Boolean).length;
+    if (cur !== overrideDays) {
+      await setStudentWeekdays(student.id, DEFAULT_WEEKDAYS[overrideDays] ?? DEFAULT_WEEKDAYS[6]);
+      await setPlanAttendanceReset(planId, user.id, localDateKey());
+    }
+  }
   await bumpPlanNotice(planId, user.id);
   redirect(`/plans/${planId}?ok=updated`);
 }
@@ -499,10 +510,10 @@ export async function dismissPlanNoticeAction(fd: FormData): Promise<{ ok: boole
 }
 
 // 共用重建逻辑：按学生最新成绩 + 最近反馈重建计划（含单招专项计划），教练端与学生端复用
-async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wantLlm: boolean): Promise<PlanDoc> {
+async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wantLlm: boolean, overrideDays?: number): Promise<PlanDoc> {
   const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string; singleEvents?: SingleEvents } };
   const isSingle = prev.meta?.program === "single";
-  const daysRaw = prev.meta?.daysPerWeek ?? 6;
+  const daysRaw = overrideDays ?? prev.meta?.daysPerWeek ?? 6;
   const daysPerWeek = daysRaw === 3 || daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
   const events = normSingleEvents(prev.meta?.singleEvents);
 

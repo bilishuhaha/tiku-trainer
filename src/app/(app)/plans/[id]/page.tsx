@@ -107,6 +107,15 @@ export default async function PlanPage({ params, searchParams }: { params: Promi
               placeholder="最近状态（可选）：如 上周踝部不适已恢复 / 最近只练了 4 天 / 100米刚测到 12.3"
             />
           </div>
+          <div className="flex items-center gap-2 text-xs text-slate-600">
+            <span>每周训练：</span>
+            {[3, 4, 5, 6].map((n) => (
+              <label key={n} className="flex cursor-pointer items-center gap-1">
+                <input type="radio" name="daysPerWeek" value={String(n)} defaultChecked={n === (doc.meta.daysPerWeek ?? 6)} className="accent-emerald-600" />
+                {n} 练
+              </label>
+            ))}
+          </div>
           {hasLlm && (
             <label className="flex cursor-pointer items-center gap-1.5 pb-1 text-xs text-slate-500">
               <input type="checkbox" name="useLlm" value="1" className="accent-emerald-600" />
