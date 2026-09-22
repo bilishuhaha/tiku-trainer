@@ -451,7 +451,7 @@ function d6Weakness(phase: PhaseKey, weakKey: string): DayDoc {
 // ============ 组装一周课表 ============
 export interface WeekOptions {
   phase: PhaseKey;
-  daysPerWeek: number; // 4 | 5 | 6
+  daysPerWeek: number; // 3 | 4 | 5 | 6
   weakKey: string;
 }
 
@@ -469,6 +469,7 @@ export function buildWeekSchedule(opts: WeekOptions): DayDoc[] {
   let idx: number[];
   if (opts.daysPerWeek === 6) idx = [0, 1, 2, 3, 4, 5];
   else if (opts.daysPerWeek === 5) idx = [0, 1, 2, 3, 4];
+  else if (opts.daysPerWeek === 3) idx = [0, 3, 4]; // 3 天（精简）：速度、跳跃专项、全身力量+铅球（三项考试全覆盖）
   else idx = [0, 1, 3, 4]; // 4 天：速度、下肢力量+铅球技术、跳跃专项、全身力量+铅球
   const days = idx.map((i) => all[i]).map((d, k) => ({ ...d, day: k + 1 }));
   return days;

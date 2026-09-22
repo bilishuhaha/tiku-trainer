@@ -164,7 +164,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
   if (!student) return errTo("/students", "学生不存在");
   if (Number(student.singleEnabled) === 1) return errTo(`/students/${studentId}`, "该生已开通单招：请用上方「单招专项计划（100米+急行跳远）」生成，统考（术科）计划生成已停用");
   const daysRaw = Number(str(fd, "daysPerWeek") || "6");
-  const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
+  const daysPerWeek = daysRaw === 3 || daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
   const hadPlan = (await listPlans(studentId)).length > 0;
   const goals = await listGoals(studentId);
   const latest = await latestScoresByItem(studentId);
@@ -214,7 +214,7 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
 }
 
 // 默认训练日（与学生端“每周训练日”默认一致）：4 练 / 5 练 / 6 练
-const DEFAULT_WEEKDAYS: Record<number, string> = { 4: "1,2,4,6", 5: "1,2,3,5,6", 6: "1,2,3,4,5,6" };
+const DEFAULT_WEEKDAYS: Record<number, string> = { 3: "1,3,5", 4: "1,2,4,6", 5: "1,2,3,5,6", 6: "1,2,3,4,5,6" };
 
 /** 计划确认时若学生还没选过“每周训练日”，自动按每周次数补默认值，并从今天开始计算考勤，
  *  避免新学生因为没选训练日而“不用打卡、也不会被封锁”。 */
@@ -223,7 +223,7 @@ async function ensureWeekdaysForPlan(student: StudentRow, plan: PlanRow, coachId
   let k = 6;
   try {
     const dpw = Number((JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number } }).meta?.daysPerWeek);
-    if (dpw === 4 || dpw === 5 || dpw === 6) k = dpw;
+    if (dpw === 3 || dpw === 4 || dpw === 5 || dpw === 6) k = dpw;
   } catch { /* 结构异常时用默认 6 练 */ }
   await setStudentWeekdays(student.id, DEFAULT_WEEKDAYS[k] ?? DEFAULT_WEEKDAYS[6]);
   await setPlanAttendanceReset(plan.id, coachId, localDateKey());
@@ -503,7 +503,7 @@ async function rebuildDocFromLatestState(student: StudentRow, plan: PlanRow, wan
   const prev = JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number; program?: string; singleEvents?: SingleEvents } };
   const isSingle = prev.meta?.program === "single";
   const daysRaw = prev.meta?.daysPerWeek ?? 6;
-  const daysPerWeek = daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
+  const daysPerWeek = daysRaw === 3 || daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
   const events = normSingleEvents(prev.meta?.singleEvents);
 
   const goals = await listGoals(student.id);
@@ -856,7 +856,7 @@ export async function generateSinglePlanAction(fd: FormData): Promise<void> {
   if (!student) return errTo("/students", "学生不存在");
   if (Number(student.singleEnabled) !== 1) return errTo(`/students/${studentId}`, "该学生尚未开通单招，请先授权再生成");
   const daysRaw = Number(str(fd, "daysPerWeek") || "6");
-  const daysPerWeek = daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
+  const daysPerWeek = daysRaw === 3 || daysRaw === 4 || daysRaw === 5 ? daysRaw : 6;
   const latest = await latestScoresByItem(studentId);
   const events = normSingleEvents(student.singleEvent);
   const doc = buildSinglePlanDoc({

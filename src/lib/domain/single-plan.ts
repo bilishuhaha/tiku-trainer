@@ -190,6 +190,7 @@ const LONGJUMP_SPEED_TITLE: Record<PhaseKey, string> = {
 function rolesFor(events: SingleEvents, k: number): RolePlus[] {
   if (events === "sprint") {
     const m: Record<number, RolePlus[]> = {
+      3: ["speed", "power", "speedEnd"],
       4: ["speed", "power", "speedEnd", "speed"],
       5: ["speed", "power", "speedEnd", "speed", "tech"],
       6: ["speed", "power", "speedEnd", "speed", "tech", "recovery"],
@@ -198,12 +199,14 @@ function rolesFor(events: SingleEvents, k: number): RolePlus[] {
   }
   if (events === "longJump") {
     const m: Record<number, RolePlus[]> = {
+      3: ["jump", "power", "speed"],
       4: ["jump", "power", "speed", "jumpTech"],
       5: ["jump", "power", "speed", "jumpTech", "speed"],
       6: ["jump", "power", "speed", "jumpTech", "speed", "recovery"],
     };
     return m[k] ?? m[6];
   }
+  if (k === 3) return ["speed", "jump", "power"]; // 两项都练（3 天精简）：速度 / 跳远专项 / 力量爆发
   return ROLE_BY_K[k] ?? ROLE_BY_K[6];
 }
 
@@ -570,7 +573,7 @@ function weekNote(phase: PhaseKey, w: number, weeks: number): string {
 
 // ============ 主构建函数 ============
 export function buildSinglePlanDoc(input: Input): PlanDoc {
-  const k = input.daysPerWeek === 4 || input.daysPerWeek === 5 || input.daysPerWeek === 6 ? input.daysPerWeek : 6;
+  const k = input.daysPerWeek === 3 || input.daysPerWeek === 4 || input.daysPerWeek === 5 || input.daysPerWeek === 6 ? input.daysPerWeek : 6;
   const realWeeks = weeksUntil(input.examDate);
   const totalWeeks = realWeeks !== null && realWeeks > 0 ? realWeeks : 12;
   const phases = planPhases(totalWeeks);

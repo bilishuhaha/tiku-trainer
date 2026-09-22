@@ -27,6 +27,7 @@ export function parseWeekdays(csv: string | null | undefined): number[] {
 
 export function defaultWeekdays(k: number): number[] {
   const map: Record<number, number[]> = {
+    3: [1, 3, 5],
     4: [1, 2, 4, 6],
     5: [1, 2, 3, 5, 6],
     6: [1, 2, 3, 4, 5, 6],
