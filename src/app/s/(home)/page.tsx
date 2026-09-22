@@ -127,7 +127,7 @@ export default async function StudentHomePage({ searchParams }: { searchParams: 
       {!plan ? (
         <NoPlanCard />
       ) : (
-        <PlanBody studentId={student.id} studentWeekdays={student.weekdays} planId={plan.id} planCreatedAt={plan.createdAt} planStartDate={plan.startDate} planStatus={plan.status} structure={plan.structure} />
+        <PlanBody studentId={student.id} studentWeekdays={student.weekdays} weekdaysConfirmed={Number(student.weekdaysConfirmed)} planId={plan.id} planCreatedAt={plan.createdAt} planStartDate={plan.startDate} planStatus={plan.status} structure={plan.structure} />
       )}
 
       {/* 训练反馈 */}
@@ -158,9 +158,10 @@ function NoPlanCard() {
   );
 }
 
-async function PlanBody({ studentId, studentWeekdays, planId, planCreatedAt, planStartDate, planStatus, structure }: {
+async function PlanBody({ studentId, studentWeekdays, weekdaysConfirmed, planId, planCreatedAt, planStartDate, planStatus, structure }: {
   studentId: string;
   studentWeekdays: string | null;
+  weekdaysConfirmed: number;
   planId: string;
   planCreatedAt: string;
   planStartDate: string | null;
@@ -170,7 +171,7 @@ async function PlanBody({ studentId, studentWeekdays, planId, planCreatedAt, pla
   const doc: PlanDoc = JSON.parse(structure);
   const k = doc.meta.daysPerWeek ?? 6;
   const chosen = parseWeekdays(studentWeekdays);
-  const needsPick = chosen.length !== k;
+  const needsPick = chosen.length !== k || weekdaysConfirmed !== 1;
 
   if (needsPick) {
     const preset = chosen.length ? chosen : defaultWeekdays(k);
@@ -253,9 +254,9 @@ function WeekdayPicker({ k, preset }: { k: number; preset: number[] }) {
     <div className="card p-6">
       <div className="flex items-center gap-2">
         <CalendarDays className="h-5 w-5 text-emerald-600" />
-        <h2 className="font-semibold text-slate-900">先选一下：你每周哪几天训练？</h2>
+        <h2 className="font-semibold text-slate-900">请确认：你每周哪几天训练？</h2>
       </div>
-      <p className="mt-1 text-sm text-slate-500">你的计划是每周练 <b>{k}</b> 天，请选正好 {k} 天（按你实际能练的时间）</p>
+      <p className="mt-1 text-sm text-slate-500">你的计划是每周练 <b>{k}</b> 天，请勾选正好 <b>{k}</b> 天（已按你在评估表填的天数预选，可自行调整）</p>
       <form action={setMyWeekdaysAction} className="mt-4">
         <div className="grid grid-cols-4 gap-2">
           {WEEKDAY_LABELS.map((label, i) => {

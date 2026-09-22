@@ -8,7 +8,7 @@ export interface StudentRow {
   birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null;
   injuryNote: string | null; note: string | null; accessCode: string | null; weekdays: string | null;
-  contact: string | null; pending: number; autoEnrolled: number; singleEnabled: number; singleEvent: string | null; requestedDays: number | null; missedCount: number; locked: number;
+  contact: string | null; pending: number; autoEnrolled: number; singleEnabled: number; singleEvent: string | null; requestedDays: number | null; weekdaysConfirmed: number; missedCount: number; locked: number;
   createdAt: string; updatedAt: string;
 }
 export interface GoalRow { id: string; studentId: string; event: string; target: number; note: string | null; }
@@ -32,7 +32,7 @@ function mapStudent(r: Row): StudentRow {
     goalNote: (r.goal_note as string) ?? null, injuryNote: (r.injury_note as string) ?? null, note: (r.note as string) ?? null,
     accessCode: (r.access_code as string) ?? null, weekdays: (r.weekdays as string) ?? null,
     contact: (r.contact as string) ?? null, pending: Number(r.pending ?? 0),
-    autoEnrolled: Number(r.auto_enrolled ?? 0), singleEnabled: Number(r.single_enabled ?? 0), singleEvent: (r.single_event as string) ?? null, requestedDays: r.requested_days == null ? null : Number(r.requested_days),
+    autoEnrolled: Number(r.auto_enrolled ?? 0), singleEnabled: Number(r.single_enabled ?? 0), singleEvent: (r.single_event as string) ?? null, requestedDays: r.requested_days == null ? null : Number(r.requested_days), weekdaysConfirmed: Number(r.weekdays_confirmed ?? 0),
     missedCount: Number(r.missed_count ?? 0), locked: Number(r.locked ?? 0),
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
@@ -291,6 +291,11 @@ export async function setStudentAccessCode(studentId: string, coachId: string, c
 }
 export async function setStudentWeekdays(studentId: string, weekdays: string | null): Promise<void> {
   await getDb().execute({ sql: "UPDATE students SET weekdays=?, updated_at=? WHERE id=?", args: [weekdays, nowIso(), studentId] });
+}
+
+/** 设置“训练日是否已由学生本人确认”（0=待学生选择/确认，1=已确认） */
+export async function setStudentWeekdaysConfirmed(studentId: string, v: number): Promise<void> {
+  await getDb().execute({ sql: "UPDATE students SET weekdays_confirmed=?, updated_at=? WHERE id=?", args: [v ? 1 : 0, nowIso(), studentId] });
 }
 
 /** 设置某份计划的考勤统计起点（用于新确认/解锁后避免历史缺勤直接触发封锁） */

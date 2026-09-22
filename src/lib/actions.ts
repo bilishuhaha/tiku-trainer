@@ -11,7 +11,7 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanDoc, PlanRequest, SingleEvents } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
-import { setPlanAttendanceReset, setStudentAutoEnrolled, setStudentSingleEnabled, setStudentSingleEvent, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
+import { setPlanAttendanceReset, setStudentAutoEnrolled, setStudentSingleEnabled, setStudentSingleEvent, setStudentWeekdaysConfirmed, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
 import type { PlanRow, StudentRow } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
@@ -226,6 +226,7 @@ async function ensureWeekdaysForPlan(student: StudentRow, plan: PlanRow, coachId
     if (dpw === 3 || dpw === 4 || dpw === 5 || dpw === 6) k = dpw;
   } catch { /* 结构异常时用默认 6 练 */ }
   await setStudentWeekdays(student.id, DEFAULT_WEEKDAYS[k] ?? DEFAULT_WEEKDAYS[6]);
+  await setStudentWeekdaysConfirmed(student.id, 0);
   await setPlanAttendanceReset(plan.id, coachId, localDateKey());
 }
 
@@ -360,6 +361,7 @@ export async function setMyWeekdaysAction(fd: FormData): Promise<void> {
   const uniq = [...new Set(values)].sort((x, y) => x - y);
   if (uniq.length !== k) return redirect("/s?error=" + encodeURIComponent(`请正好选择 ${k} 天作为训练日`));
   await setStudentWeekdays(me.id, uniq.join(","));
+  await setStudentWeekdaysConfirmed(me.id, 1);
   redirect("/s");
 }
 
@@ -423,6 +425,7 @@ export async function regeneratePlanAction(fd: FormData): Promise<void> {
     const cur = (student.weekdays ?? "").split(",").map((x) => x.trim()).filter(Boolean).length;
     if (cur !== overrideDays) {
       await setStudentWeekdays(student.id, DEFAULT_WEEKDAYS[overrideDays] ?? DEFAULT_WEEKDAYS[6]);
+      await setStudentWeekdaysConfirmed(student.id, 0);
       await setPlanAttendanceReset(planId, user.id, localDateKey());
     }
   }

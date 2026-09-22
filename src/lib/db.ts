@@ -230,6 +230,17 @@ async function ensureSqliteColumns(instance: Db) {
   await addColumnIfMissing("plans", "notice_rev", "ALTER TABLE plans ADD COLUMN notice_rev INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("plans", "seen_rev", "ALTER TABLE plans ADD COLUMN seen_rev INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("plans", "attendance_reset", "ALTER TABLE plans ADD COLUMN attendance_reset TEXT");
+  // 训练日是否已由学生本人确认（新增列时：已有训练日的老学生视为已确认，避免打扰）
+  {
+    const info = await instance.execute("PRAGMA table_info(students)");
+    const names = new Set(info.rows.map((r) => r.name as string));
+    if (!names.has("weekdays_confirmed")) {
+      try {
+        await instance.execute("ALTER TABLE students ADD COLUMN weekdays_confirmed INTEGER NOT NULL DEFAULT 0");
+        await instance.execute("UPDATE students SET weekdays_confirmed=1 WHERE weekdays IS NOT NULL AND TRIM(weekdays)<>''");
+      } catch { /* 忽略并发等错误 */ }
+    }
+  }
 }
 
 export function getDb(): Db {
