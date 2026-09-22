@@ -222,6 +222,7 @@ async function ensureSqliteColumns(instance: Db) {
   await addColumnIfMissing("students", "contact", "ALTER TABLE students ADD COLUMN contact TEXT");
   await addColumnIfMissing("students", "single_enabled", "ALTER TABLE students ADD COLUMN single_enabled INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("students", "single_event", "ALTER TABLE students ADD COLUMN single_event TEXT");
+  await addColumnIfMissing("students", "requested_days", "ALTER TABLE students ADD COLUMN requested_days INTEGER");
   await addColumnIfMissing("students", "auto_enrolled", "ALTER TABLE students ADD COLUMN auto_enrolled INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("students", "missed_count", "ALTER TABLE students ADD COLUMN missed_count INTEGER NOT NULL DEFAULT 0");
   await addColumnIfMissing("students", "locked", "ALTER TABLE students ADD COLUMN locked INTEGER NOT NULL DEFAULT 0");

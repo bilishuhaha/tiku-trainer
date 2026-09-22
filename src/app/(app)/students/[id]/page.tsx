@@ -216,7 +216,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
               <input type="hidden" name="studentId" value={id} />
               <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600">
                 <span>每周训练：</span>
-                {[3,4,5,6].map((n)=>(<label key={n} className="flex cursor-pointer items-center gap-1"><input type="radio" name="daysPerWeek" value={String(n)} defaultChecked={n===6} className="accent-emerald-600" />{n} 练</label>))}
+                {[3,4,5,6].map((n)=>(<label key={n} className="flex cursor-pointer items-center gap-1"><input type="radio" name="daysPerWeek" value={String(n)} defaultChecked={n === (student.requestedDays ?? 6)} className="accent-emerald-600" />{n} 练</label>))}
                 {hasLlm && (<label className="flex cursor-pointer items-center gap-1"><input type="checkbox" name="useLlm" value="1" className="accent-emerald-600" /> AI 润色</label>)}
                 <PendingSubmitButton pendingText="生成中…" className="btn btn-dark text-xs">按当前项目生成单招计划</PendingSubmitButton>
               </div>
@@ -386,7 +386,7 @@ export default async function StudentDetailPage({ params, searchParams }: { para
               <div className="flex gap-2">
                 {[3, 4, 5, 6].map((n) => (
                   <label key={n} className="flex cursor-pointer items-center gap-1.5 rounded-lg border border-slate-300 px-3 py-2 text-sm hover:bg-slate-50">
-                    <input type="radio" name="daysPerWeek" value={String(n)} defaultChecked={n === 6} className="accent-emerald-600" />
+                    <input type="radio" name="daysPerWeek" value={String(n)} defaultChecked={n === (student.requestedDays ?? 6)} className="accent-emerald-600" />
                     {n} 练 / 周
                   </label>
                 ))}

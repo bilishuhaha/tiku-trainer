@@ -661,6 +661,8 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
   const height = numOrEmpty(str(fd, "height"));
   const weight = numOrEmpty(str(fd, "weight"));
   const trainingYears = numOrEmpty(str(fd, "trainingYears"));
+  const daysRaw = Number(str(fd, "daysPerWeek") || "6");
+  const requestedDays = daysRaw === 3 || daysRaw === 4 || daysRaw === 5 || daysRaw === 6 ? daysRaw : 6;
   const examDate = str(fd, "examDate").trim() || null;
   if (examDate && !/^\d{4}-\d{2}-\d{2}$/.test(examDate)) return back("考试日期格式不正确");
   const goalNote = str(fd, "goalNote").trim().slice(0, 120) || null;
@@ -670,8 +672,10 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
 
   const student = await createEnrolledStudent(coachId, {
     name, gender, birthDate, height, weight, trainingYears, examDate,
-    goalNote, injuryNote, note, contact,
+    goalNote, injuryNote, note, contact, requestedDays,
   });
+  // 按学生自选的每周天数预置默认训练日（3天→周一/三/五），教练确认后考勤即可直接生效
+  await setStudentWeekdays(student.id, DEFAULT_WEEKDAYS[requestedDays] ?? DEFAULT_WEEKDAYS[6]);
 
   // 自动把“当前成绩”按项目入档（标记为新生自报，便于教练识别）
   const today = localDateKey();
@@ -698,9 +702,9 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
       },
       latest,
       goals: { sprint: null, tripleJump: null, shotPut: null },
-      daysPerWeek: 6,
+      daysPerWeek: requestedDays,
     };
-    const doc = buildPlanDoc(req, { daysPerWeek: 6 });
+    const doc = buildPlanDoc(req, { daysPerWeek: requestedDays });
     const autoPlan = await createPlan({
       studentId: student.id,
       coachId,
@@ -710,7 +714,7 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
       diagnosis: JSON.stringify(doc.diagnosis),
       structure: JSON.stringify(doc),
       coachNote: coach.autoConfirmPlan === 1 ? "新生评估表自动建档并自动定稿生成。" : "新生评估表自动建档生成，请教练核对后确认。",
-      aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek: 6, generatedAt: doc.meta.generatedAt, by: "auto-enroll" }),
+      aiMeta: JSON.stringify({ mode: doc.meta.mode, daysPerWeek: requestedDays, generatedAt: doc.meta.generatedAt, by: "auto-enroll" }),
       examDate: student.examDate,
       startDate: localDateKey(),
     });

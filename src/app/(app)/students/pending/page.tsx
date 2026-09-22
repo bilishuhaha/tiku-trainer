@@ -45,6 +45,7 @@ export default async function PendingStudentsPage({ searchParams }: { searchPara
                 <div className="mt-1 text-xs text-slate-500">
                   提交于 {fmtDate(s.createdAt, true)}
                   {s.examDate ? ` · 考试 ${fmtDate(s.examDate)}` : ""}
+                  {s.requestedDays ? ` · 想每周练 ${s.requestedDays} 天` : ""}
                   {s.height ? ` · ${s.height}cm` : ""}
                   {s.weight ? ` / ${s.weight}kg` : ""}
                 </div>

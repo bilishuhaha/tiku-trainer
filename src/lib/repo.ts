@@ -8,7 +8,7 @@ export interface StudentRow {
   birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null;
   injuryNote: string | null; note: string | null; accessCode: string | null; weekdays: string | null;
-  contact: string | null; pending: number; autoEnrolled: number; singleEnabled: number; singleEvent: string | null; missedCount: number; locked: number;
+  contact: string | null; pending: number; autoEnrolled: number; singleEnabled: number; singleEvent: string | null; requestedDays: number | null; missedCount: number; locked: number;
   createdAt: string; updatedAt: string;
 }
 export interface GoalRow { id: string; studentId: string; event: string; target: number; note: string | null; }
@@ -32,7 +32,7 @@ function mapStudent(r: Row): StudentRow {
     goalNote: (r.goal_note as string) ?? null, injuryNote: (r.injury_note as string) ?? null, note: (r.note as string) ?? null,
     accessCode: (r.access_code as string) ?? null, weekdays: (r.weekdays as string) ?? null,
     contact: (r.contact as string) ?? null, pending: Number(r.pending ?? 0),
-    autoEnrolled: Number(r.auto_enrolled ?? 0), singleEnabled: Number(r.single_enabled ?? 0), singleEvent: (r.single_event as string) ?? null,
+    autoEnrolled: Number(r.auto_enrolled ?? 0), singleEnabled: Number(r.single_enabled ?? 0), singleEvent: (r.single_event as string) ?? null, requestedDays: r.requested_days == null ? null : Number(r.requested_days),
     missedCount: Number(r.missed_count ?? 0), locked: Number(r.locked ?? 0),
     createdAt: r.created_at as string, updatedAt: r.updated_at as string,
   };
@@ -145,14 +145,14 @@ export async function createStudent(coachId: string, input: StudentInput): Promi
 export async function createEnrolledStudent(coachId: string, input: {
   name: string; gender: string; birthDate: string | null; height: number | null; weight: number | null;
   trainingYears: number | null; examDate: string | null; goalNote: string | null; injuryNote: string | null;
-  note: string | null; contact: string | null;
+  note: string | null; contact: string | null; requestedDays?: number | null;
 }): Promise<StudentRow> {
   const id = randomUUID();
   const t = nowIso();
   await getDb().execute({
-    sql: `INSERT INTO students (id, coach_id, name, gender, birth_date, height, weight, training_years, exam_date, goal_note, injury_note, note, contact, pending, created_at, updated_at)
-          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
-    args: [id, coachId, input.name, input.gender, input.birthDate, input.height, input.weight, input.trainingYears, input.examDate, input.goalNote, input.injuryNote, input.note, input.contact, t, t],
+    sql: `INSERT INTO students (id, coach_id, name, gender, birth_date, height, weight, training_years, exam_date, goal_note, injury_note, note, contact, requested_days, pending, created_at, updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,1,?,?)`,
+    args: [id, coachId, input.name, input.gender, input.birthDate, input.height, input.weight, input.trainingYears, input.examDate, input.goalNote, input.injuryNote, input.note, input.contact, input.requestedDays ?? null, t, t],
   });
   return (await findStudent(id, coachId))!;
 }

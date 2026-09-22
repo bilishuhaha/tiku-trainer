@@ -87,6 +87,17 @@ export default async function EnrollPage({ searchParams }: { searchParams: Promi
                   <Field label="已训练年限（年）" full>
                     <input name="trainingYears" type="number" inputMode="decimal" min="0" step="0.5" className="input" placeholder="如 1（没练过填 0）" />
                   </Field>
+                  <Field label="每周能训练几天 *" full>
+                    <div className="flex h-10 overflow-hidden rounded-lg border border-slate-300 text-sm">
+                      {[3, 4, 5, 6].map((n) => (
+                        <label key={n} className="flex flex-1 cursor-pointer items-center justify-center has-[:checked]:bg-emerald-600 has-[:checked]:text-white has-[:checked]:font-medium">
+                          <input type="radio" name="daysPerWeek" value={String(n)} className="hidden" defaultChecked={n === 6} />
+                          {n} 天
+                        </label>
+                      ))}
+                    </div>
+                    <p className="mt-1 text-[11px] text-slate-400">按你在学校实际能训练的天数选（3 天=周一/三/五，教练可再调整）</p>
+                  </Field>
                 </div>
 
                 {/* 目标与伤病 */}

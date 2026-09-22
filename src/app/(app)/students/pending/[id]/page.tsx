@@ -41,6 +41,7 @@ export default async function PendingReviewPage({ params }: { params: Promise<{ 
           <Row label="体重" value={student.weight !== null ? `${student.weight} kg` : "—"} />
           <Row label="联系电话/微信" value={student.contact ?? "—"} />
           <Row label="已训练年限" value={student.trainingYears !== null ? `${student.trainingYears} 年` : "—"} />
+          <Row label="每周想练" value={student.requestedDays ? `${student.requestedDays} 天/周` : "—"} />
           <Row label="提交时间" value={fmtDate(student.createdAt, true)} />
         </dl>
         {student.goalNote && <Note label="🎯 目标" text={student.goalNote} />}
