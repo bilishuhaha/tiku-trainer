@@ -11,7 +11,7 @@ import { enhanceWithLlm } from "./domain/llm";
 import type { EventKey, PlanDoc, PlanRequest, SingleEvents } from "./domain/types";
 import { localDateKey } from "./format";
 import { LOCK_THRESHOLD, evaluateAttendanceDetail } from "./attendance";
-import { setStudentAutoEnrolled, setStudentSingleEnabled, setStudentSingleEvent, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
+import { setPlanAttendanceReset, setStudentAutoEnrolled, setStudentSingleEnabled, setStudentSingleEvent, setUserAutoConfirm, setUserAutoEnroll } from "./repo";
 import type { PlanRow, StudentRow } from "./repo";
 import {
   ackPlanNotice, addCheckin, addScore, bumpPlanNotice, confirmStudentPending, createEnrolledStudent, createFeedback, createLeave, createPlan, createStudent, createUser,
@@ -213,6 +213,22 @@ export async function generatePlanAction(fd: FormData): Promise<void> {
   redirect(`/plans/${plan.id}`);
 }
 
+// 默认训练日（与学生端“每周训练日”默认一致）：4 练 / 5 练 / 6 练
+const DEFAULT_WEEKDAYS: Record<number, string> = { 4: "1,2,4,6", 5: "1,2,3,5,6", 6: "1,2,3,4,5,6" };
+
+/** 计划确认时若学生还没选过“每周训练日”，自动按每周次数补默认值，并从今天开始计算考勤，
+ *  避免新学生因为没选训练日而“不用打卡、也不会被封锁”。 */
+async function ensureWeekdaysForPlan(student: StudentRow, plan: PlanRow, coachId: string): Promise<void> {
+  if (student.weekdays && student.weekdays.trim()) return;
+  let k = 6;
+  try {
+    const dpw = Number((JSON.parse(plan.structure) as { meta?: { daysPerWeek?: number } }).meta?.daysPerWeek);
+    if (dpw === 4 || dpw === 5 || dpw === 6) k = dpw;
+  } catch { /* 结构异常时用默认 6 练 */ }
+  await setStudentWeekdays(student.id, DEFAULT_WEEKDAYS[k] ?? DEFAULT_WEEKDAYS[6]);
+  await setPlanAttendanceReset(plan.id, coachId, localDateKey());
+}
+
 export async function confirmPlanAction(fd: FormData): Promise<void> {
   const user = await requireUser();
   const id = str(fd, "id");
@@ -221,6 +237,11 @@ export async function confirmPlanAction(fd: FormData): Promise<void> {
   // 若学生当前有另一份“已确认”计划在生效，说明这是“换新版计划”，确认后要让学生端看到“计划已更新”提示
   const hadActive = plan.status !== "confirmed" && (await listPlans(plan.studentId)).some((p) => p.id !== plan.id && p.status === "confirmed");
   await updatePlan(id, user.id, { status: "confirmed" });
+  // 若学生尚未设置“每周训练日”，确认时自动补默认值，让考勤立即生效
+  {
+    const stu = await findStudent(plan.studentId, user.id);
+    if (stu) await ensureWeekdaysForPlan(stu, plan, user.id);
+  }
   // 单招计划定稿时：只保留这份最新单招计划，清掉该生其他计划（旧“两项都练”/旧统考等），
   // 避免学生端仍看到与当前报考项目不一致的旧计划
   if (planIsSingle(plan)) {
@@ -680,7 +701,7 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
       daysPerWeek: 6,
     };
     const doc = buildPlanDoc(req, { daysPerWeek: 6 });
-    await createPlan({
+    const autoPlan = await createPlan({
       studentId: student.id,
       coachId,
       title: doc.meta.title,
@@ -693,6 +714,7 @@ export async function submitEnrollAction(fd: FormData): Promise<void> {
       examDate: student.examDate,
       startDate: localDateKey(),
     });
+    if (coach.autoConfirmPlan === 1) await ensureWeekdaysForPlan(student, autoPlan, coachId);
     await createStudentSession({ id: student.id, name: student.name });
     redirect("/s?ok=enrolled");
   }

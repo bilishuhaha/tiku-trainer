@@ -171,6 +171,12 @@ export default async function StudentsPage({ searchParams }: { searchParams: Pro
                     {s.trainingYears !== null && s.trainingYears !== undefined && (
                       <span className="text-xs text-slate-400">训龄 {s.trainingYears} 年</span>
                     )}
+                    {!s.weekdays && (
+                      <span className="rounded-full bg-amber-100 px-1.5 py-0.5 text-[11px] font-semibold text-amber-700">未设训练日 · 考勤未生效</span>
+                    )}
+                    {draftSet.has(s.id) && (
+                      <span className="rounded-full bg-slate-200 px-1.5 py-0.5 text-[11px] font-semibold text-slate-600">计划待确认</span>
+                    )}
                     <span className="rounded-full bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700 ring-1 ring-sky-100">
                       {trainStats[s.id]?.daysPerWeek ? `每周 ${trainStats[s.id].daysPerWeek} 练` : "未排计划"}
                     </span>

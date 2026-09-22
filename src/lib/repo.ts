@@ -292,6 +292,14 @@ export async function setStudentAccessCode(studentId: string, coachId: string, c
 export async function setStudentWeekdays(studentId: string, weekdays: string | null): Promise<void> {
   await getDb().execute({ sql: "UPDATE students SET weekdays=?, updated_at=? WHERE id=?", args: [weekdays, nowIso(), studentId] });
 }
+
+/** 设置某份计划的考勤统计起点（用于新确认/解锁后避免历史缺勤直接触发封锁） */
+export async function setPlanAttendanceReset(planId: string, coachId: string, dateKey: string): Promise<void> {
+  await getDb().execute({
+    sql: "UPDATE plans SET attendance_reset=?, updated_at=? WHERE id=? AND coach_id=?",
+    args: [dateKey, nowIso(), planId, coachId],
+  });
+}
 export async function findActivePlan(studentId: string): Promise<PlanRow | null> {
   const rs = await getDb().execute({
     sql: "SELECT * FROM plans WHERE student_id=? ORDER BY (status='confirmed') DESC, created_at DESC LIMIT 1",
